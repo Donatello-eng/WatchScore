@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import { Font } from "../../fonts";
 import { Image } from "expo-image";
 import { useWindowDimensions, PixelRatio } from "react-native";
+import { useR } from "../../hooks/useR";
 
 type Props = {
   onGetStarted?: () => void;
@@ -29,19 +30,6 @@ const BG_COLORS = ["#FEF9F4", "#FFE1D1", "#EEC7FF", "#EEF0FF"] as const;
 const HEADLINE = `Every\nwatch\ntells a\nstory.`;
 
 type TupleColors = readonly [ColorValue, ColorValue, ...ColorValue[]];
-
-function useR() {
-  const { width, height } = useWindowDimensions();
-
-  // scale from a 390px baseline (iPhone 14-ish), clamped so it never goes crazy
-  const s = Math.max(0.8, Math.min(1.25, width / 390));
-
-  const scale = (n: number) => PixelRatio.roundToNearestPixel(n * s);
-  const vw = (pct: number) => (width * pct) / 100; // % of screen width
-  const vh = (pct: number) => (height * pct) / 100; // % of screen height
-
-  return { width, height, scale, vw, vh };
-}
 
 const Welcome: React.FC<Props> = ({
   onGetStarted,
@@ -57,7 +45,7 @@ const Welcome: React.FC<Props> = ({
           <Text
             style={[
               styles.h1,
-              { fontSize: R.scale(64), lineHeight: R.scale(77) }, // ← responsive type
+              { fontSize: R.scale(67), lineHeight: R.scale(80) }, // ← responsive type
             ]}
             allowFontScaling={false}
           >
@@ -77,7 +65,7 @@ const Welcome: React.FC<Props> = ({
           style={[
             styles.h1,
             styles.h1Invisible,
-            { fontSize: R.scale(64), lineHeight: R.scale(77) }, // ← same here
+            { fontSize: R.scale(67), lineHeight: R.scale(80) }, // ← same here
           ]}
           allowFontScaling={false}
         >
@@ -89,7 +77,8 @@ const Welcome: React.FC<Props> = ({
   const handleGetStarted = () => {
     if (onGetStarted) return onGetStarted();
     // navigate to next onboarding page or tabs
-    router.push("/onboarding/details"); // change to your next route
+    router.push({ pathname: "/onboarding/guide", params: { i: "0" } });
+    // change to your next route
   };
 
   const handleOpenTerms = () => {
@@ -120,7 +109,7 @@ const Welcome: React.FC<Props> = ({
 
         {/* Decorative watches */}
         <Image
-          source={require("../../assets/watch-left.webp")}
+          source={require("../../assets/images/watch-left.webp")}
           style={[
             styles.watchImgLeftBase,
             {
@@ -133,7 +122,7 @@ const Welcome: React.FC<Props> = ({
         />
 
         <Image
-          source={require("../../assets/watch-right.webp")}
+          source={require("../../assets/images/watch-right.webp")}
           style={[
             styles.watchImgRightBase,
             {
@@ -161,7 +150,6 @@ const Welcome: React.FC<Props> = ({
               styles.ctaButton,
               pressed && { transform: [{ scale: 0.98 }] },
             ]}
-            //android_ripple={{ color: "rgba(255,255,255,0.15)" }}
           >
             <Text style={styles.ctaText}>Get started</Text>
           </Pressable>
