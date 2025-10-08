@@ -1,7 +1,7 @@
 // src/hooks/useR.ts
 import { useWindowDimensions, PixelRatio } from "react-native";
 
-/** Design baseline:(390 dp not pixels). Clamp so sizes stay sane. */
+/** Design baseline:(412 dp not pixels). Clamp so sizes stay sane. */
 const BASE_WIDTH = 412;
 const MIN_SCALE = 0.8;
 const MAX_SCALE = 1.25;

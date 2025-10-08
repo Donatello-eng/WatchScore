@@ -3,45 +3,31 @@ import React from "react";
 import { StyleSheet, View, Text, Pressable, StatusBar } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
-import { router, useLocalSearchParams } from "expo-router";
-
-import { Font } from "../../fonts";
+import { router } from "expo-router";
+import { Font } from "../../hooks/fonts";
 import { useR } from "../../hooks/useR";
 import { Dots } from "../../ui/dots";
 import { guideSlides } from "../../hooks/guideSlidesData";
 
 export default function Guide() {
   const R = useR();
-  const { i } = useLocalSearchParams<{ i?: string }>();
-
   const total = guideSlides.length;
-  const index = Math.min(Math.max(parseInt(i ?? "0", 10) || 0, 0), total - 1);
-  const slide = guideSlides[index];
+
+  const clamp = (n: number) => Math.min(Math.max(n, 0), total - 1);
+  const [index, setIndex] = React.useState(0);
+  const slide = guideSlides[clamp(index)];
 
   const titleSize = R.scale(51);
   const titleLine = R.scale(61);
 
   const goBack = () => {
-    if (index > 0) {
-      router.replace({
-        pathname: "/onboarding/guide",
-        params: { i: String(index - 1) },
-      });
-    } else {
-      router.back();
-    }
+    if (index > 0) setIndex((x) => x - 1);
+    else router.back();
   };
 
   const goNext = () => {
-    if (index < total - 1) {
-      router.replace({
-        pathname: "/onboarding/guide",
-        params: { i: String(index + 1) },
-      });
-    } else {
-      // last slide → go to your next onboarding step
-      router.push("/onboarding/welcome"); // change to your route if needed
-    }
+    if (index < total - 1) setIndex((x) => x + 1);
+    else router.push("/feed/history");
   };
 
   return (
@@ -51,7 +37,6 @@ export default function Guide() {
     >
       <StatusBar barStyle="dark-content" />
 
-      {/* Top row: back + dots */}
       <View style={styles.topRow}>
         <Pressable
           hitSlop={12}
@@ -67,11 +52,9 @@ export default function Guide() {
         </Pressable>
 
         <Dots active={index + 1} total={total} />
-
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Illustration */}
       <Image
         source={slide.image}
         style={{
@@ -82,7 +65,6 @@ export default function Guide() {
         }}
       />
 
-      {/* Headline + body */}
       <View style={{ marginTop: R.vh(4), paddingHorizontal: R.vw(22) }}>
         <Text
           style={{
@@ -94,7 +76,6 @@ export default function Guide() {
         >
           {slide.title}
         </Text>
-
         <Text
           style={{
             fontFamily: Font.inter.regular,
@@ -109,7 +90,6 @@ export default function Guide() {
         </Text>
       </View>
 
-      {/* CTA */}
       <View
         style={{
           marginTop: "auto",
@@ -120,14 +100,14 @@ export default function Guide() {
         <Pressable
           onPress={goNext}
           style={({ pressed }) => [
-            styles.cta, // ← keep your original CTA style
+            styles.cta,
             pressed && { transform: [{ scale: 0.98 }] },
           ]}
         >
           <Text style={styles.ctaLabel}>Next</Text>
           <Image
             source={require("../../assets/images/chevron-left.webp")}
-            style={styles.nextIcon} // ← keep your original absolute icon style
+            style={styles.nextIcon}
           />
         </Pressable>
       </View>
