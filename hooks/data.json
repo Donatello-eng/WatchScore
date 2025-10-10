@@ -1,0 +1,55 @@
+{
+  "name": "Rolex Submariner",
+  "subtitle": "Luxury Diver Watch",
+  "overall": {
+    "conclusion": "Iconic dive watch with robust 904L steel case, sapphire crystal, 300 m WR and in-house automatic; superb build and heritage, but costly service and weaker day-to-day value.",
+    "score": { "letter": "B-", "numeric": 82, "scale": "letter_0_100" }
+  },
+  "brand_reputation": {
+    "type": "Horology",
+    "legacy": { "value": 118, "unit": "y", "raw": "118 years" },
+    "score": { "letter": "A+", "numeric": 98, "scale": "letter_0_100" }
+  },
+  "movement_quality": {
+    "type": "Automatic",
+    "accuracy": { "value": 2, "unit": "s_per_day", "raw": "+/-2 sec/day" },
+    "reliability": { "label": "Very High", "level": 5, "scale": "ordinal_1_5" },
+    "score": { "letter": "B", "numeric": 85, "scale": "letter_0_100" }
+  },
+  "materials_build": {
+    "total_weight": { "value": 155, "unit": "g", "raw": "155 g" },
+    "case_material": { "raw": "904L Oystersteel", "material": "steel", "grade": "904L" },
+    "crystal": { "raw": "Sapphire with AR coating", "material": "sapphire", "ar_coating": true },
+    "build_quality": { "label": "Exceptional", "level": 5, "scale": "ordinal_1_5" },
+    "water_resistance": { "value": 300, "unit": "m", "raw": "300 m" },
+    "score": { "letter": "A", "numeric": 95, "scale": "letter_0_100" }
+  },
+  "maintenance_risks": {
+    "service_interval": { "min": 3, "max": 5, "unit": "y", "raw": "3-5 years" },
+    "service_cost": { "min": 5000, "max": 15000, "currency": "USD", "raw": "$5k-$15k" },
+    "parts_availability": { "label": "Very Limited", "level": 1, "scale": "ordinal_1_5" },
+    "serviceability": { "raw": "Rolex Service Centers or top-tier independents", "restricted_to_authorized": true },
+    "known_weak_points": [
+      "Calendar mechanism fragile if set at wrong time",
+      "Moisture sensitivity",
+      "Parts scarcity"
+    ],
+    "score": { "letter": "C", "numeric": 75, "scale": "letter_0_100" }
+  },
+  "value_for_money": {
+    "list_price": { "amount": 8000, "currency": "USD", "approx": true, "raw": "~$8k" },
+    "resale_average": { "amount": 10200, "currency": "USD", "approx": true, "raw": "~$10.2k" },
+    "market_liquidity": { "label": "High", "level": 4, "scale": "ordinal_1_5" },
+    "holding_value": { "label": "Strong", "level": 4, "scale": "ordinal_1_5", "note": "historically low-depreciation" },
+    "value_for_wearer": { "label": "Low", "level": 2, "scale": "ordinal_1_5" },
+    "value_for_collector": { "label": "Strong", "level": 4, "scale": "ordinal_1_5" },
+    "spec_efficiency_note": "Excellent 300m WR, in-house caliber, ceramic bezel at this price",
+    "score": { "letter": "D", "numeric": 65, "scale": "letter_0_100" }
+  },
+  "alternatives": [
+    { "model": "Seiko SUR309P1", "movement": "Quartz", "price": { "amount": 1999, "currency": "USD", "raw": "$1,999" } },
+    { "model": "Tissot PRX Powermatic 80", "movement": "Automatic", "price": { "amount": 695, "currency": "USD", "raw": "$695" } },
+    { "model": "Omega Seamaster Diver 300M", "movement": "Automatic", "price": { "amount": 5400, "currency": "USD", "raw": "$5,400" } }
+  ],
+  "meta": { "schema_version": "1.0.0", "units_system": "SI", "release_year": 2021 }
+}

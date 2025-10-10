@@ -119,8 +119,10 @@ export default function UploadPhotos() {
         {/* Begin button */}
 
         <Pressable
-          style={[
+          onPress={() => router.push("/feed/camera")}
+          style={({ pressed }) => [
             styles.beginBtn,
+            pressed && { transform: [{ scale: 0.98 }] },
             {
               bottom: insets.bottom + vh(3),
               borderRadius: scale(40),
@@ -170,10 +172,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     alignSelf: "center",
     backgroundColor: "#111111",
-    // center the label
     justifyContent: "center",
     alignItems: "center",
-    // leave space so the chevron doesn't overlap the centered text
   },
 
   backBtn: {
