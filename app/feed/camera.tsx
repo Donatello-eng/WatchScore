@@ -18,6 +18,8 @@ import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
 import { Linking } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
@@ -25,7 +27,6 @@ export default function CameraScreen() {
   const camRef = useRef<CameraView>(null);
 
   const [permission, requestPermission] = useCameraPermissions();
-
   // three slots; null = empty (show gallery icon)
   const [slots, setSlots] = useState<Array<string | null>>([null, null, null]);
 
@@ -156,6 +157,82 @@ export default function CameraScreen() {
       console.warn("pickFromGallery error", e);
     }
   };
+
+  // create a unique session id
+  const makeSessionId = () => `${Date.now()}`;
+
+  // ensure a uri is a file we own; copy into app doc dir under the session folder
+  async function copyIntoSession(uri: string, sessionDir: string, idx: number) {
+    // ensure dir exists
+    await FileSystem.makeDirectoryAsync(sessionDir, {
+      intermediates: true,
+    }).catch(() => {});
+    const ext = uri.split(".").pop() || "jpg";
+    const dest = `${sessionDir}/photo_${idx + 1}.${ext}`;
+    try {
+      // If it's already a file:// we can copy directly. If it's content:// (Android gallery), copyAsync still works.
+      await FileSystem.copyAsync({ from: uri, to: dest });
+      return dest;
+    } catch {
+      // Fallback: try to download (covers some content:// providers)
+      const dl = await FileSystem.downloadAsync(uri, dest);
+      return dl.uri;
+    }
+  }
+
+  // persist current 3 slots -> returns sessionId
+  async function persistCurrentSlots(): Promise<string | null> {
+    const filled = slots.filter(Boolean) as string[];
+    if (filled.length === 0) return null;
+
+    const sessionId = `${Date.now()}`;
+
+    // resolve lazily & safely
+    const FS: any = FileSystem as any;
+    const baseDir: string | null =
+      FS?.documentDirectory ?? FS?.cacheDirectory ?? null;
+
+    // default: just keep the original URIs (works even if baseDir is unavailable)
+    let images: string[] = slots.map((u) => u ?? "");
+
+    if (baseDir) {
+      const dir = `${baseDir}sessions/${sessionId}`;
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(
+        () => {}
+      );
+
+      const out: string[] = Array(3).fill("");
+
+      for (let i = 0; i < 3; i++) {
+        const uri = slots[i];
+        if (!uri) continue;
+
+        const ext = (uri.split(".").pop() || "jpg").split("?")[0];
+        const dest = `${dir}/photo_${i + 1}.${ext}`;
+
+        try {
+          await FileSystem.copyAsync({ from: uri, to: dest });
+          out[i] = dest;
+        } catch {
+          // Some content:// URIs require a download fallback
+          const dl = await FileSystem.downloadAsync(uri, dest).catch(
+            () => null
+          );
+          out[i] = dl?.uri ?? uri; // still keep original if download fails
+        }
+      }
+
+      images = out;
+    }
+
+    const manifest = { id: sessionId, createdAt: Date.now(), images };
+    await AsyncStorage.setItem(
+      `session:${sessionId}`,
+      JSON.stringify(manifest)
+    );
+    return sessionId;
+  }
+
   return (
     <View style={styles.root}>
       <CameraView
@@ -361,8 +438,14 @@ export default function CameraScreen() {
         ) : (
           // Solid green "Continue" pill
           <Pressable
-            onPress={() => {
-              router.push("/feed/watch-details")
+            onPress={async () => {
+              const id = await persistCurrentSlots();
+              if (id) {
+                router.push({
+                  pathname: "/feed/watch-details",
+                  params: { sessionId: id },
+                });
+              }
             }}
             style={{
               width: "100%",

@@ -12,14 +12,14 @@
   },
   "movement_quality": {
     "type": "Automatic",
-    "accuracy": { "value": 2, "unit": "s_per_day", "raw": "+/-2 sec/day" },
+    "accuracy": { "value": 2, "unit": "s_per_day", "raw": "±2 sec/day" },
     "reliability": { "label": "Very High", "level": 5, "scale": "ordinal_1_5" },
     "score": { "letter": "B", "numeric": 85, "scale": "letter_0_100" }
   },
   "materials_build": {
     "total_weight": { "value": 155, "unit": "g", "raw": "155 g" },
     "case_material": { "raw": "904L Oystersteel", "material": "steel", "grade": "904L" },
-    "crystal": { "raw": "Sapphire with AR coating", "material": "sapphire", "ar_coating": true },
+    "crystal": { "raw": "Sapphire with AR coating", "material": "Sapphire", "coating":"with AR coating" },
     "build_quality": { "label": "Exceptional", "level": 5, "scale": "ordinal_1_5" },
     "water_resistance": { "value": 300, "unit": "m", "raw": "300 m" },
     "score": { "letter": "A", "numeric": 95, "scale": "letter_0_100" }
