@@ -87,7 +87,7 @@ export default function GradeRing({
         style={[
           {
             position: "absolute",
-            fontFamily: Font.inter.bold,
+            fontFamily: Font.inter.semiBold,
             fontSize: letterSize,
             color: "#414141",
             textAlign: "center",

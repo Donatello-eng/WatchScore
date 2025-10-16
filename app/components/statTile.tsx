@@ -18,6 +18,7 @@ export type StatTileProps = {
   icon: any; // require(…)
   style?: ViewStyle;
   valueSize?: number; // font size for the main value only
+  valueLines?: number;
 };
 
 export default function StatTile({
@@ -28,24 +29,21 @@ export default function StatTile({
   icon,
   style,
   valueSize = 20,
+  valueLines = 2,
 }: StatTileProps) {
   const { scale } = useR();
+
+  const linesProp = valueLines === 0 ? {} : { numberOfLines: valueLines };
 
   return (
     <View style={[styles(scale).tile, style]}>
       <Text
         style={[styles(scale).tileValue, { fontSize: valueSize }]}
-        numberOfLines={2}
+        {...linesProp}
       >
         {value}
         {!!unit && (
-          <Text
-            // default unit styling + any overrides you pass
-            style={[styles(scale).tileUnit, unitStyle]}
-          >
-            {" "}
-            {unit}
-          </Text>
+          <Text style={[styles(scale).tileUnit, unitStyle]}> {unit}</Text>
         )}
       </Text>
 
@@ -68,7 +66,7 @@ const styles = (scale: (n: number) => number) =>
       borderRadius: scale(16),
       paddingVertical: scale(12),
       paddingHorizontal: scale(14),
-      minHeight: scale(86),
+      //minHeight: scale(76),
       justifyContent: "space-between",
     },
     tileValue: {
@@ -93,7 +91,7 @@ const styles = (scale: (n: number) => number) =>
       marginRight: scale(6),
     },
     tileLabel: {
-      color: "#9B9B9B",
+      color: "#818181",
       fontFamily: Font.inter.medium,
       fontSize: scale(12),
     },

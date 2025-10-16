@@ -7,7 +7,7 @@
   },
   "brand_reputation": {
     "type": "Horology",
-    "legacy": { "value": 118, "unit": "y", "raw": "118 years" },
+    "legacy": { "value": 118, "unit": "years", "raw": "118 years" },
     "score": { "letter": "A+", "numeric": 98, "scale": "letter_0_100" }
   },
   "movement_quality": {
@@ -43,13 +43,13 @@
     "holding_value": { "label": "Strong", "level": 4, "scale": "ordinal_1_5", "note": "historically low-depreciation" },
     "value_for_wearer": { "label": "Low", "level": 2, "scale": "ordinal_1_5" },
     "value_for_collector": { "label": "Strong", "level": 4, "scale": "ordinal_1_5" },
-    "spec_efficiency_note": "Excellent 300m WR, in-house caliber, ceramic bezel at this price",
+    "spec_efficiency_note": {"label": "Excellent", "note": "300m WR, in-house caliber, ceramic bezel at this price"},
     "score": { "letter": "D", "numeric": 65, "scale": "letter_0_100" }
   },
   "alternatives": [
-    { "model": "Seiko SUR309P1", "movement": "Quartz", "price": { "amount": 1999, "currency": "USD", "raw": "$1,999" } },
+    { "model": "Seiko SUR309P1", "movement": "Quartz", "price": { "amount": 1999, "currency": "USD", "raw": "$1999" } },
     { "model": "Tissot PRX Powermatic 80", "movement": "Automatic", "price": { "amount": 695, "currency": "USD", "raw": "$695" } },
-    { "model": "Omega Seamaster Diver 300M", "movement": "Automatic", "price": { "amount": 5400, "currency": "USD", "raw": "$5,400" } }
+    { "model": "Omega Seamaster Diver 300M", "movement": "Automatic", "price": { "amount": 5400, "currency": "USD", "raw": "$5400" } }
   ],
   "meta": { "schema_version": "1.0.0", "units_system": "SI", "release_year": 2021 }
 }

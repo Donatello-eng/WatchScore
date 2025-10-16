@@ -52,8 +52,6 @@ export default function WatchDetails() {
   const CARD_RADIUS = scale(30);
   const CARD_MARGIN_T = scale(15);
 
-  const { progress, track } = pickRingColors(overallNumeric);
-
   const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
   const [photos, setPhotos] = useState<string[]>([]);
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -132,7 +130,7 @@ export default function WatchDetails() {
               {subtitle}
             </Text>
 
-            {/* Photo + spec pills */}
+            {/*Photo + spec pills */}
             <View style={{ flexDirection: "row", marginTop: scale(12) }}>
               {photos.length > 0 ? (
                 <View style={{ width: vw(50), height: vw(50) }}>
@@ -271,7 +269,7 @@ export default function WatchDetails() {
             </View>
           </View>
 
-          {/* Overall Score Card */}
+          {/* -------------------------------Overall Score Card------------------------------ */}
           <View
             style={[
               styles.card,
@@ -312,7 +310,7 @@ export default function WatchDetails() {
                 score={overallNumeric ?? 0}
                 letter={overallLetter ?? "-"}
                 baseSize={156}
-                baseStroke={23}
+                baseStroke={20}
                 labelFontSize={35}
               />
             </View>
@@ -348,6 +346,79 @@ export default function WatchDetails() {
               >
                 {overallText}
               </Text>
+            </View>
+          </View>
+
+          {/* Brand Reputation */}
+          <View
+            style={[
+              styles.card,
+              {
+                marginHorizontal: CARD_MARGIN_H,
+                padding: CARD_PADDING,
+                borderRadius: CARD_RADIUS,
+                marginTop: CARD_MARGIN_T,
+              },
+            ]}
+          >
+            {/* Header */}
+            <View style={styles.cardHeaderRow}>
+              <Text style={[styles.cardHeader, { fontSize: scale(18) }]}>
+                Brand Reputation
+              </Text>
+              <Image
+                source={require("../../assets/images/info.webp")}
+                style={{
+                  width: scale(18),
+                  height: scale(18),
+                  tintColor: "#C7C7C7",
+                  marginLeft: scale(6),
+                }}
+                resizeMode="contain"
+              />
+            </View>
+
+            {/* Content row: left stack (2 pills) + right ring */}
+            <View style={{ flexDirection: "row", marginTop: scale(12) }}>
+              {/* LEFT: stack the two pills */}
+              <View style={{ flex: 1, minWidth: 0, marginRight: scale(10) }}>
+                <StatTile
+                  style={{ alignSelf: "stretch" }}
+                  value={`${data.brand_reputation?.type ?? "–"}`}
+                  icon={require("../../assets/images/type.webp")}
+                  label="Brand Type"
+                />
+
+                {/* gap between pills equals your previous row gap */}
+                <View style={{ height: scale(10) }} />
+
+                <StatTile
+                  style={{ alignSelf: "stretch" }}
+                  value={`${data.brand_reputation?.legacy?.value ?? "–"}`}
+                  unit={`${data.brand_reputation?.legacy?.unit ?? ""}`}
+                  unitStyle={{ fontSize: 18, color: "#9B9B9B" }}
+                  icon={require("../../assets/images/legacy.webp")}
+                  label="Legacy"
+                  valueSize={26}
+                />
+              </View>
+
+              {/* RIGHT: ring centered vertically relative to the whole stack */}
+              <View
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <GradeRing
+                  score={data.brand_reputation?.score?.numeric ?? 0}
+                  letter={data.brand_reputation?.score?.letter ?? "-"}
+                  baseSize={96}
+                  baseStroke={10}
+                />
+              </View>
             </View>
           </View>
 
@@ -524,6 +595,423 @@ export default function WatchDetails() {
               />
             </View>
           </View>
+
+          {/* ---------------------Maintenance & Risks------------------- */}
+          <View
+            style={[
+              styles.card,
+              {
+                marginHorizontal: CARD_MARGIN_H,
+                padding: CARD_PADDING,
+                borderRadius: CARD_RADIUS,
+                marginTop: CARD_MARGIN_T,
+              },
+            ]}
+          >
+            {/* Header */}
+            <View style={styles.cardHeaderRow}>
+              <Text style={[styles.cardHeader, { fontSize: scale(18) }]}>
+                Maintenance & Risks
+              </Text>
+              <Image
+                source={require("../../assets/images/info.webp")}
+                style={{
+                  width: scale(18),
+                  height: scale(18),
+                  tintColor: "#C7C7C7",
+                  marginLeft: scale(6),
+                }}
+                resizeMode="contain"
+              />
+            </View>
+
+            {/* Row 1: Service Interval + Risk Ring */}
+            <View style={{ flexDirection: "row", marginTop: scale(12) }}>
+              <View style={{ flex: 1, minWidth: 0, marginRight: scale(10) }}>
+                <StatTile
+                  style={{ alignSelf: "stretch" }}
+                  value={formatInterval(
+                    data.maintenance_risks?.service_interval?.min,
+                    data.maintenance_risks?.service_interval?.max
+                  )}
+                  unit={"years"}
+                  unitStyle={{
+                    fontSize: 18,
+                    color: "#9B9B9B",
+                    fontFamily: Font.inter.regular,
+                  }}
+                  icon={require("../../assets/images/service-interval.webp")}
+                  label="Service Interval"
+                  valueSize={26}
+                />
+              </View>
+
+              <View
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <GradeRing
+                  score={data.maintenance_risks?.score?.numeric ?? 0}
+                  letter={data.maintenance_risks?.score?.letter ?? "-"}
+                  baseSize={86}
+                  baseStroke={10}
+                />
+              </View>
+            </View>
+
+            {/* Row 2: Service Cost + Parts Availability */}
+            <View style={{ flexDirection: "row", marginTop: scale(10) }}>
+              <StatTile
+                style={{ flex: 1, marginRight: scale(10) }}
+                value={data.maintenance_risks.service_cost.raw}
+                icon={require("../../assets/images/service-cost.webp")}
+                label="Service Cost"
+              />
+              <StatTile
+                style={{ flex: 1 }}
+                value={`${
+                  data.maintenance_risks?.parts_availability?.label ?? "–"
+                }`}
+                icon={require("../../assets/images/parts-availability.webp")}
+                label="Parts Availability"
+              />
+            </View>
+
+            {/* Row 3: Serviceability (full width pill) */}
+            <View style={{ marginTop: scale(10) }}>
+              <StatTile
+                style={{ alignSelf: "stretch" }}
+                value={`${data.maintenance_risks?.serviceability?.raw ?? "–"}`}
+                icon={require("../../assets/images/serviceability.webp")}
+                label="Serviceability"
+                valueSize={16}
+              />
+            </View>
+
+            {/* Row 4: Known Weak Points (now a StatTile) */}
+            <View style={{ marginTop: scale(10) }}>
+              <StatTile
+                style={{ alignSelf: "stretch" }}
+                value={
+                  Array.isArray(data.maintenance_risks?.known_weak_points) &&
+                  data.maintenance_risks!.known_weak_points.length
+                    ? data.maintenance_risks!.known_weak_points.join("\n")
+                    : "–"
+                }
+                valueSize={scale(12)} // smaller body like the mock
+                icon={require("../../assets/images/weak-points.webp")}
+                label="Known Weak Points" // bottom label row with icon
+                valueLines={0}
+              />
+            </View>
+          </View>
+
+          {/* -----------------------------------Value-for-Money---------------------------------- */}
+          <View
+            style={[
+              styles.card,
+              {
+                marginHorizontal: CARD_MARGIN_H,
+                padding: CARD_PADDING,
+                borderRadius: CARD_RADIUS,
+                marginTop: CARD_MARGIN_T,
+              },
+            ]}
+          >
+            {/* Header */}
+            <View style={styles.cardHeaderRow}>
+              <Text style={[styles.cardHeader, { fontSize: scale(18) }]}>
+                Value-for-Money
+              </Text>
+              <Image
+                source={require("../../assets/images/info.webp")}
+                style={{
+                  width: scale(18),
+                  height: scale(18),
+                  tintColor: "#C7C7C7",
+                  marginLeft: scale(6),
+                }}
+                resizeMode="contain"
+              />
+            </View>
+
+            {/* Row 1: List Price + Ring */}
+            <View style={{ flexDirection: "row", marginTop: scale(12) }}>
+              <View style={{ flex: 1, minWidth: 0, marginRight: scale(10) }}>
+                <StatTile
+                  style={{ alignSelf: "stretch" }}
+                  value={data.value_for_money?.list_price?.raw ?? "–"}
+                  icon={require("../../assets/images/money.webp")}
+                  label="List Price"
+                  valueSize={26}
+                />
+              </View>
+
+              <View
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <GradeRing
+                  score={data.value_for_money?.score?.numeric ?? 0}
+                  letter={data.value_for_money?.score?.letter ?? "-"}
+                  baseSize={86}
+                  baseStroke={10}
+                />
+              </View>
+            </View>
+
+            {/* Row 2: Resale Average + Market Liquidity */}
+            <View style={{ flexDirection: "row", marginTop: scale(10) }}>
+              <StatTile
+                style={{ flex: 1, marginRight: scale(10) }}
+                value={data.value_for_money?.resale_average?.raw ?? "–"}
+                icon={require("../../assets/images/resale-average.webp")}
+                label="Resale Average"
+                valueSize={26}
+              />
+              <StatTile
+                style={{ flex: 1 }}
+                value={data.value_for_money?.market_liquidity?.label ?? "–"}
+                icon={require("../../assets/images/market-liquidity.webp")}
+                label="Market Liquidity"
+              />
+            </View>
+
+            {/* Row 3: Holding value (full width, with note in parentheses) */}
+            <View style={{ marginTop: scale(10) }}>
+              <StatTile
+                style={{ alignSelf: "stretch" }}
+                value={`${data.value_for_money?.holding_value?.label ?? "–"}`}
+                unit={`${
+                  data.value_for_money?.holding_value?.note
+                    ? ` (${data.value_for_money.holding_value.note})`
+                    : ""
+                }`}
+                unitStyle={{
+                  fontFamily: Font.inter.medium,
+                  fontSize: 13,
+                  color: "#45494A",
+                }}
+                icon={require("../../assets/images/service-cost.webp")}
+                label="Holding Value"
+              />
+            </View>
+
+            {/* Row 4: one pill with divider, using StatTile twice */}
+            <View
+              style={{
+                marginTop: scale(10),
+                backgroundColor: "#F5F5F5",
+                borderRadius: scale(16),
+                paddingVertical: scale(12),
+                paddingHorizontal: scale(14),
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                {/* LEFT (wearer) */}
+                <View style={{ flex: 1, minWidth: 0, paddingRight: scale(12) }}>
+                  <StatTile
+                    value={data.value_for_money?.value_for_wearer?.label ?? "–"}
+                    icon={require("../../assets/images/value-for-wearer.webp")}
+                    label="Value for wearer"
+                    /* make StatTile render “bare” so the parent pill provides bg/radius */
+                    style={{
+                      backgroundColor: "transparent",
+                      paddingVertical: 0,
+                      paddingHorizontal: 0,
+                      borderRadius: 0,
+                      minHeight: 0,
+                      alignSelf: "stretch",
+                    }}
+                  />
+                </View>
+
+                {/* DIVIDER */}
+                <View
+                  style={{
+                    width: 1,
+                    alignSelf: "stretch",
+                    backgroundColor: "#afafafff",
+                  }}
+                />
+
+                {/* RIGHT (collector) */}
+                <View style={{ flex: 1, minWidth: 0, paddingLeft: scale(12) }}>
+                  <StatTile
+                    value={
+                      data.value_for_money?.value_for_collector?.label ?? "–"
+                    }
+                    icon={require("../../assets/images/value-for-collector.webp")}
+                    label="Value for collector"
+                    style={{
+                      backgroundColor: "transparent",
+                      paddingVertical: 0,
+                      paddingHorizontal: 0,
+                      borderRadius: 0,
+                      minHeight: 0,
+                      alignSelf: "stretch",
+                    }}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Row 5: Spec Efficiency (StatTile) */}
+            <View style={{ marginTop: scale(10) }}>
+              <StatTile
+                style={{ alignSelf: "stretch" }}
+                value={data.value_for_money?.spec_efficiency_note?.label ?? "–"} // e.g. "Excellent"
+                valueSize={scale(18)}
+                unit={
+                  data.value_for_money?.spec_efficiency_note?.note
+                    ? `\n${data.value_for_money.spec_efficiency_note.note}` // new line for body
+                    : ""
+                }
+                unitStyle={{
+                  color: "#45494A",
+                  fontFamily: Font.inter.medium,
+                  fontSize: scale(14),
+                  lineHeight: scale(18),
+                }}
+                icon={require("../../assets/images/spec-efficiency.webp")}
+                label="Spec Efficiency"
+                valueLines={0}
+              />
+            </View>
+          </View>
+
+          {/* -------------------------------Alternatives----------------------------- */}
+          <View
+            style={[
+              styles.card,
+              {
+                marginHorizontal: CARD_MARGIN_H,
+                padding: CARD_PADDING,
+                borderRadius: CARD_RADIUS,
+                marginTop: CARD_MARGIN_T,
+              },
+            ]}
+          >
+            {/* Header */}
+            <View style={styles.cardHeaderRow}>
+              <Text style={[styles.cardHeader, { fontSize: scale(18) }]}>
+                Alternatives
+              </Text>
+              <Image
+                source={require("../../assets/images/info.webp")}
+                style={{
+                  width: scale(18),
+                  height: scale(18),
+                  tintColor: "#C7C7C7",
+                  marginLeft: scale(6),
+                }}
+                resizeMode="contain"
+              />
+            </View>
+
+            {(data.alternatives ?? []).map((alt, i) => (
+              <View
+                key={`${alt.model}-${i}`}
+                style={{
+                  marginTop: i === 0 ? scale(12) : scale(14),
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: scale(20),
+                  borderWidth: 2,
+                  borderColor: "#EEF1F4",
+                  paddingVertical: scale(14),
+                  paddingHorizontal: scale(16),
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  {/* Left round icon bubble */}
+                  <View
+                    style={{
+                      width: scale(56),
+                      height: scale(56),
+                      backgroundColor: "#F9F9F9",
+                      borderRadius: scale(50),
+                      borderWidth: 2,
+                      borderColor: "#EFF1F6",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Image
+                      source={require("../../assets/images/watch-glyph.webp")}
+                      style={{
+                        width: scale(26),
+                        height: scale(26),
+                        tintColor: "#4D535D",
+                      }}
+                      resizeMode="contain"
+                    />
+                  </View>
+
+                  {/* Middle: model + chip */}
+                  <View style={{ flex: 1, minWidth: 0, marginLeft: scale(14) }}>
+                    {/* title */}
+                    <Text
+                      numberOfLines={2} // allow wrap if needed
+                      style={{
+                        fontFamily: Font.inter.bold,
+                        fontSize: scale(16),
+                        color: "#4A4D50",
+                      }}
+                    >
+                      {alt.model}
+                    </Text>
+
+                    {/* movement chip */}
+                    <View
+                      style={{
+                        alignSelf: "flex-start",
+                        marginTop: scale(8),
+                        paddingHorizontal: scale(10),
+                        paddingVertical: scale(5),
+                        borderRadius: scale(10),
+                        backgroundColor: "#ECEDEF",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: Font.inter.medium,
+                          fontSize: scale(13),
+                          color: "#8E8F93",
+                        }}
+                        numberOfLines={1}
+                      >
+                        {alt.movement ?? "—"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Right: price — now a sibling, centered by the outer row */}
+                  <View
+                    style={{ marginLeft: scale(12), justifyContent: "center" }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontFamily: Font.inter.bold,
+                        fontSize: scale(15),
+                        color: "#23DA60",
+                      }}
+                    >
+                      {fmtPrice(alt.price)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -563,3 +1051,29 @@ const styles = StyleSheet.create({
   cardHeaderRow: { flexDirection: "row", alignItems: "center" },
   cardHeader: { color: "#A8A8A8", fontFamily: Font.inter.semiBold },
 });
+
+function formatInterval(min?: number, max?: number) {
+  if (min == null && max == null) return "–";
+  if (min != null && max != null) return `${min}-${max}`;
+  return String(min ?? max ?? "–");
+}
+function fmtPrice(p?: { amount?: number; currency?: string; raw?: string }) {
+  // Display like: "1999 $" (number + space + symbol)
+  const sym = currencyToSymbol(p?.currency);
+  if (!p) return `– ${sym}`;
+  if (p.raw) {
+    const num = p.raw.replace(/[^0-9.,]/g, "");
+    return `${num} ${sym}`;
+  }
+  if (p.amount != null) return `${p.amount} ${sym}`;
+  return `– ${sym}`;
+}
+function currencyToSymbol(c?: string) {
+  const map: Record<string, string> = {
+    USD: "$",
+    EUR: "€",
+    GBP: "£",
+    JPY: "¥",
+  };
+  return c ? map[c] ?? "$" : "$";
+}
