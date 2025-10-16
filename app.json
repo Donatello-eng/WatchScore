@@ -14,9 +14,13 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "buildNumber": "1",
+      "bundleIdentifier": "com.bumpgames.watchscore",
       "supportsTablet": true
     },
     "android": {
+      "versionCode": 1,
+      "package": "com.bumpgames.watchscore",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
