@@ -39,3 +39,19 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+# Visual Studio (local caches)
+.vs/
+**/*.vsidx
+**/*.vsuo
+**/VSWorkspaceState.json
+**/DocumentLayout.json
+
+# VS Code workspace folder (keep common shared files)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# JetBrains (optional)
+.idea/
