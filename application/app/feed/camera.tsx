@@ -14,8 +14,8 @@ import {
 } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router } from "expo-router";
-import { useR } from "../../hooks/useR";
-import { Font } from "../../hooks/fonts";
+import { useR } from "../../../hooks/useR";
+import { Font } from "../../../hooks/fonts";
 import { Linking } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";

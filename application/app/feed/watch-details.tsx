@@ -15,11 +15,11 @@ import {
 } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
 import { router } from "expo-router";
-import { useR } from "../../hooks/useR";
-import { Font } from "../../hooks/fonts";
-import data from "../../hooks/data.json"; // <- your JSON
+import { useR } from "../../../hooks/useR";
+import { Font } from "../../../hooks/fonts";
+import data from "../../../hooks/data.json"; // <- your JSON
 import { LinearGradient } from "expo-linear-gradient";
-import { pickRingColors } from "../../hooks/ringColors";
+import { pickRingColors } from "../../../hooks/ringColors";
 import StatTile from "../components/statTile";
 import GradeRing from "../components/gradeRing";
 type Money = {

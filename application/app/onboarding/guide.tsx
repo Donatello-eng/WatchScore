@@ -4,10 +4,10 @@ import { StyleSheet, View, Text, Pressable, StatusBar } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { Font } from "../../hooks/fonts";
-import { useR } from "../../hooks/useR";
-import { Dots } from "../../ui/dots";
-import { guideSlides } from "../../hooks/guideSlidesData";
+import { Font } from "../../../hooks/fonts";
+import { useR } from "../../../hooks/useR";
+import { Dots } from "../../../ui/dots";
+import { guideSlides } from "../../../hooks/guideSlidesData";
 
 export default function Guide() {
   const R = useR();

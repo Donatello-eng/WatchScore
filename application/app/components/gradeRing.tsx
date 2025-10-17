@@ -2,9 +2,9 @@
 import React from "react";
 import { View, Text, TextStyle } from "react-native";
 import Svg, { Circle } from "react-native-svg";
-import { useR } from "../../hooks/useR";
-import { Font } from "../../hooks/fonts";
-import { pickRingColors } from "../../hooks/ringColors";
+import { useR } from "../../../hooks/useR";
+import { Font } from "../../../hooks/fonts";
+import { pickRingColors } from "../../../hooks/ringColors";
 
 export type GradeRingProps = {
   /** 0..100 numeric score */

@@ -13,10 +13,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { Font } from "../../hooks/fonts";
+import { Font } from "../../../hooks/fonts";
 import { Image } from "expo-image";
 import { useWindowDimensions, PixelRatio } from "react-native";
-import { useR } from "../../hooks/useR";
+import { useR } from "../../../hooks/useR";
 
 type Props = {
   onGetStarted?: () => void;
