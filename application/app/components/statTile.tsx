@@ -7,8 +7,8 @@ import {
   ViewStyle,
   TextStyle,
 } from "react-native";
-import { useR } from "../../../hooks/useR";
-import { Font } from "../../../hooks/fonts";
+import { useR } from "../../hooks/useR";
+import { Font } from "../../hooks/fonts";
 
 export type StatTileProps = {
   value: string; // main value (e.g., "~120")

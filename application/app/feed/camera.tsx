@@ -14,12 +14,14 @@ import {
 } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router } from "expo-router";
-import { useR } from "../../../hooks/useR";
-import { Font } from "../../../hooks/fonts";
+import { useR } from "../../hooks/useR";
+import { Font } from "../../hooks/fonts";
 import { Linking } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { uploadSession, analyzeSession } from "../../src/api/upload";
 
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
@@ -440,11 +442,26 @@ export default function CameraScreen() {
           <Pressable
             onPress={async () => {
               const id = await persistCurrentSlots();
-              if (id) {
+              if (!id) return;
+
+              const raw = await AsyncStorage.getItem(`session:${id}`);
+              const manifest = raw ? JSON.parse(raw) : null;
+              const images: string[] = manifest?.images?.filter(Boolean) ?? [];
+
+              try {
+                await uploadSession(id, images);
+
+                // NEW: analyze on the server
+                const result = await analyzeSession(id);
+                // result.watch contains the DB watch; result.ai is the parsed AI JSON (stub for now)
+
+                // navigate with what you need (example: pass watchId)
                 router.push({
                   pathname: "/feed/watch-details",
-                  params: { sessionId: id },
+                  params: { sessionId: id, watchId: String(result.watch.id) },
                 });
+              } catch (e: any) {
+                console.warn("upload/analyze error", e?.message || e);
               }
             }}
             style={{

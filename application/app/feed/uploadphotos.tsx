@@ -12,8 +12,8 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { useR } from "../../../hooks/useR";
-import { Font } from "../../../hooks/fonts";
+import { useR } from "../../hooks/useR";
+import { Font } from "../../hooks/fonts";
 import { router } from "expo-router";
 
 export default function UploadPhotos() {

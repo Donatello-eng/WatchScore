@@ -1,0 +1,80 @@
+# --- Python build / bytecode ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Packaging / build ---
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# --- Testing / coverage / tooling caches ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.pyrightcache/
+.ruff_cache/
+.tox/
+.nox/
+
+# --- IDE / OS junk ---
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example    # keep a sample template if you make one
+
+# --- Local databases (SQLite) ---
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# If you only want to ignore the dev DB specifically, replace the above with:
+# prisma/dev.db
+# prisma/dev.db-journal
+
+# --- Runtime logs ---
+*.log
+logs/
+uvicorn.*.log
+
+# --- Uploads (user content written by server) ---
+uploads/
+!uploads/.gitkeep
+
+# --- Node / frontend leftovers (if any snuck in) ---
+node_modules/
+
+# --- PyInstaller / cx_Freeze artifacts (if ever used) ---
+*.spec
+
+# --- Hypothesis (property-based testing) ---
+.hypothesis/
+
+# --- Poetry / pip-tools lock variants (optional) ---
+# poetry.lock
+# requirements*.txt
+
+# --- VS Code local settings for debug tasks (optional) ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

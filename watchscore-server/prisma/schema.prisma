@@ -1,0 +1,64 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider  = "prisma-client-py"
+  interface = "asyncio"
+}
+
+model Session {
+  id         String   @id
+  createdAt  DateTime @default(now())
+  status     String   @default("UPLOADED")   // ← removed @db.Text
+  watchId    Int?
+  watch      Watch?   @relation(fields: [watchId], references: [id])
+
+  photos     Photo[]
+}
+
+model Photo {
+  id        Int      @id @default(autoincrement())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  watchId   Int?
+  watch     Watch?   @relation(fields: [watchId], references: [id], onDelete: SetNull)
+
+  path      String
+  mime      String?
+  index     Int?
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([watchId])
+}
+
+model Watch {
+  id             Int       @id @default(autoincrement())
+  name           String?
+  subtitle       String?
+  brand          String?
+  model          String?
+  year           Int?
+  overallLetter  String?
+  overallNumeric Int?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sessions    Session[]
+  photos      Photo[]
+  analysis    WatchAnalysis?
+
+  @@unique([brand, model, year])
+}
+
+model WatchAnalysis {
+  id        Int      @id @default(autoincrement())
+  watchId   Int      @unique
+  watch     Watch    @relation(fields: [watchId], references: [id], onDelete: Cascade)
+
+  aiJsonStr String    // ← removed @db.Text; store JSON as plain String
+  createdAt DateTime @default(now())
+}
