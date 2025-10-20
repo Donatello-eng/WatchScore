@@ -8,32 +8,6 @@ generator client {
   interface = "asyncio"
 }
 
-model Session {
-  id         String   @id
-  createdAt  DateTime @default(now())
-  status     String   @default("UPLOADED")   // ← removed @db.Text
-  watchId    Int?
-  watch      Watch?   @relation(fields: [watchId], references: [id])
-
-  photos     Photo[]
-}
-
-model Photo {
-  id        Int      @id @default(autoincrement())
-  sessionId String
-  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  watchId   Int?
-  watch     Watch?   @relation(fields: [watchId], references: [id], onDelete: SetNull)
-
-  path      String
-  mime      String?
-  index     Int?
-  createdAt DateTime @default(now())
-
-  @@index([sessionId])
-  @@index([watchId])
-}
-
 model Watch {
   id             Int       @id @default(autoincrement())
   name           String?
@@ -43,22 +17,35 @@ model Watch {
   year           Int?
   overallLetter  String?
   overallNumeric Int?
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  sessions    Session[]
-  photos      Photo[]
-  analysis    WatchAnalysis?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  photos         Photo[]
+  analysis       WatchAnalysis?
 
   @@unique([brand, model, year])
+}
+
+model Photo {
+  id        Int      @id @default(autoincrement())
+  watchId   Int
+  watch     Watch    @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  url       String   // REQUIRED now
+  mime      String?
+  index     Int?
+  provider  String?
+  bucket    String?
+  key       String?
+  width     Int?
+  height    Int?
+  createdAt DateTime @default(now())
+
+  @@index([watchId])
 }
 
 model WatchAnalysis {
   id        Int      @id @default(autoincrement())
   watchId   Int      @unique
   watch     Watch    @relation(fields: [watchId], references: [id], onDelete: Cascade)
-
-  aiJsonStr String    // ← removed @db.Text; store JSON as plain String
+  aiJsonStr String
   createdAt DateTime @default(now())
 }

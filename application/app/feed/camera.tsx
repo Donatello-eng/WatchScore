@@ -23,6 +23,66 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { uploadSession, analyzeSession } from "../../src/api/upload";
 
+import * as ImageManipulator from "expo-image-manipulator";
+import { Platform } from "react-native";
+
+const MAX_EDGE = 1600;
+const WEBP_QUALITY = 0.75;
+
+function getImageSize(uri: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    Image.getSize(
+      uri,
+      (w, h) => resolve({ width: w, height: h }),
+      (err) => reject(err)
+    );
+  });
+}
+
+export async function shrinkAndNormalize(uri: string, maxEdge = MAX_EDGE) {
+  let w = 0,
+    h = 0;
+  try {
+    const dims = await getImageSize(uri);
+    w = dims.width;
+    h = dims.height;
+  } catch {
+    // If we can’t read size, just re-encode to WEBP without resizing
+    const out = await ImageManipulator.manipulateAsync(uri, [], {
+      compress: WEBP_QUALITY,
+      format: ImageManipulator.SaveFormat.WEBP,
+      base64: false,
+    });
+    return { uri: out.uri, mime: "image/webp" };
+  }
+
+  const longest = Math.max(w, h);
+  if (longest <= maxEdge) {
+    // Already small → just normalize to WEBP (fix orientation, strip EXIF)
+    const out = await ImageManipulator.manipulateAsync(uri, [], {
+      compress: WEBP_QUALITY,
+      format: ImageManipulator.SaveFormat.WEBP,
+      base64: false,
+    });
+    return { uri: out.uri, mime: "image/webp" };
+  }
+
+  const scale = maxEdge / longest;
+  const targetW = Math.round(w * scale);
+  const targetH = Math.round(h * scale);
+
+  const out = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ resize: { width: targetW, height: targetH } }],
+    {
+      compress: WEBP_QUALITY,
+      format: ImageManipulator.SaveFormat.WEBP,
+      base64: false,
+    }
+  );
+  return { uri: out.uri, mime: "image/webp" };
+}
+
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
   const { scale, vw, vh } = useR();
@@ -78,17 +138,23 @@ export default function CameraScreen() {
   const takePhoto = async () => {
     try {
       const res: any = await camRef.current?.takePictureAsync({
-        quality: 0.9,
-        skipProcessing: true,
+        // Keep capture quick; we’ll do real compression below
+        quality: 1,
+        skipProcessing: true, // fastest; we normalize via ImageManipulator
+        shutterSound: false,
       });
-      const uri: string | undefined = res?.uri;
-      if (!uri) return;
+
+      const rawUri: string | undefined = res?.uri;
+      if (!rawUri) return;
+
+      // ↓ shrink/convert on-device (huge win)
+      const { uri: smallUri } = await shrinkAndNormalize(rawUri);
 
       setSlots((prev) => {
         const i = prev.findIndex((s) => s === null);
         if (i === -1) return prev;
         const next = [...prev];
-        next[i] = uri;
+        next[i] = smallUri; // store the compressed URI
         return next;
       });
     } catch (e) {
@@ -125,34 +191,30 @@ export default function CameraScreen() {
         return;
       }
 
-      // ✅ Compat: prefer new API, fallback to old one
       const mediaImages =
-        // new enum (SDK 51+)
         (ImagePicker as any).MediaType?.Images ??
-        // fallback to deprecated enum
         ImagePicker.MediaTypeOptions.Images;
 
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: mediaImages,
         allowsEditing: false,
-        quality: 0.9,
+        quality: 1, // pick original; compress after
         selectionLimit: 1,
+        exif: false,
+        base64: false,
       });
 
       if (res.canceled) return;
+      const rawUri = res.assets?.[0]?.uri;
+      if (!rawUri) return;
 
-      const uri = res.assets?.[0]?.uri;
-      if (!uri) return;
+      const { uri: smallUri } = await shrinkAndNormalize(rawUri);
 
       setSlots((prev) => {
         const i = prev.findIndex((s) => s === null);
-        if (i === -1) {
-          const next = [...prev];
-          next[next.length - 1] = uri;
-          return next;
-        }
         const next = [...prev];
-        next[i] = uri;
+        if (i === -1) next[next.length - 1] = smallUri;
+        else next[i] = smallUri;
         return next;
       });
     } catch (e) {
@@ -189,41 +251,32 @@ export default function CameraScreen() {
 
     const sessionId = `${Date.now()}`;
 
-    // resolve lazily & safely
+    // If your upload flow reads the URIs directly, you can skip copying entirely.
+    // If you want a per-session folder anyway, copy the *compressed* files:
     const FS: any = FileSystem as any;
     const baseDir: string | null =
       FS?.documentDirectory ?? FS?.cacheDirectory ?? null;
-
-    // default: just keep the original URIs (works even if baseDir is unavailable)
-    let images: string[] = slots.map((u) => u ?? "");
+    let images: string[] = filled;
 
     if (baseDir) {
       const dir = `${baseDir}sessions/${sessionId}`;
       await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(
         () => {}
       );
-
       const out: string[] = Array(3).fill("");
 
       for (let i = 0; i < 3; i++) {
         const uri = slots[i];
         if (!uri) continue;
-
-        const ext = (uri.split(".").pop() || "jpg").split("?")[0];
+        const ext = (uri.split(".").pop() || "jpg").split("?")[0]; // respects webp/jpeg
         const dest = `${dir}/photo_${i + 1}.${ext}`;
-
         try {
           await FileSystem.copyAsync({ from: uri, to: dest });
           out[i] = dest;
         } catch {
-          // Some content:// URIs require a download fallback
-          const dl = await FileSystem.downloadAsync(uri, dest).catch(
-            () => null
-          );
-          out[i] = dl?.uri ?? uri; // still keep original if download fails
+          out[i] = uri;
         }
       }
-
       images = out;
     }
 
@@ -241,6 +294,7 @@ export default function CameraScreen() {
         ref={camRef}
         style={RNStyleSheet.absoluteFill}
         facing="back"
+        animateShutter={false}
       />
       {/* Back chevron */}
       <SafeAreaView style={RNStyleSheet.absoluteFill} pointerEvents="box-none">

@@ -231,10 +231,7 @@ export default async function WatchDetail({
     <div className="px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="pt-4">
-          <a
-            href="/admin/watches"
-            className="text-slate-500 hover:text-slate-700"
-          >
+          <a href="/" className="text-slate-500 hover:text-slate-700">
             ← Back
           </a>
         </div>
