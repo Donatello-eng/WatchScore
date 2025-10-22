@@ -21,7 +21,11 @@ import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { uploadSession, analyzeSession } from "../../src/api/upload";
+import {
+  initWatchPresign,
+  putToS3,
+  finalizeWatch,
+} from "../../src/api/directS3";
 
 import * as ImageManipulator from "expo-image-manipulator";
 import { Platform } from "react-native";
@@ -495,27 +499,45 @@ export default function CameraScreen() {
           // Solid green "Continue" pill
           <Pressable
             onPress={async () => {
-              const id = await persistCurrentSlots();
-              if (!id) return;
-
-              const raw = await AsyncStorage.getItem(`session:${id}`);
-              const manifest = raw ? JSON.parse(raw) : null;
-              const images: string[] = manifest?.images?.filter(Boolean) ?? [];
-
               try {
-                await uploadSession(id, images);
+                const imgs = (slots.filter(Boolean) as string[]).slice(0, 3);
+                if (imgs.length === 0) return;
 
-                // NEW: analyze on the server
-                const result = await analyzeSession(id);
-                // result.watch contains the DB watch; result.ai is the parsed AI JSON (stub for now)
+                // 1) Normalize first → WEBP bytes + correct mime
+                const processed = await Promise.all(
+                  imgs.map((u) => shrinkAndNormalize(u))
+                );
+                // processed[i] = { uri: ".../xxx.webp", mime: "image/webp" }
 
-                // navigate with what you need (example: pass watchId)
+                // 2) Presign using the ACTUAL content-types
+                const contentTypes = processed.map((p) => p.mime);
+                const { watchId, uploads } = await initWatchPresign(
+                  processed.length,
+                  contentTypes
+                );
+
+                // 3) Upload the processed files with EXACT headers from server
+                for (let i = 0; i < processed.length; i++) {
+                  await putToS3(
+                    uploads[i].uploadUrl,
+                    processed[i].uri,
+                    uploads[i].headers
+                  );
+                }
+
+                // 4) Finalize (save keys, run AI)
+                const result = await finalizeWatch(
+                  watchId,
+                  uploads.map((u) => u.key),
+                  true
+                );
+                // 5) Navigate
                 router.push({
                   pathname: "/feed/watch-details",
-                  params: { sessionId: id, watchId: String(result.watch.id) },
+                  params: { watchId: String(result.id ?? watchId) },
                 });
               } catch (e: any) {
-                console.warn("upload/analyze error", e?.message || e);
+                console.warn("direct S3 flow failed:", e?.message || e);
               }
             }}
             style={{

@@ -1,14 +1,16 @@
-// src/app/admin/watches/page.tsx — fix hydration mismatch by rendering UTC times deterministically
+// src/app/page.tsx
 import type { JSX, ReactNode } from "react";
 import { revalidatePath } from "next/cache";
 import DeleteWatchForm from "./admin/watches/DeleteWatchForm";
 
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
-// Types
+// ---- Types: include url/key, keep path optional for backward compat
 type Photo = {
   id: number;
-  path: string;
+  url?: string | null; // signed GET (S3, preferred)
+  key?: string | null; // S3 key (server-side use)
+  path?: string | null; // legacy local path
   index?: number | null;
   mime?: string | null;
 };
@@ -25,7 +27,7 @@ type Watch = {
   ai?: any;
 };
 
-// Data
+// ---- Data
 async function getWatches(
   search?: string
 ): Promise<{ total: number; count: number; items: Watch[] }> {
@@ -37,19 +39,16 @@ async function getWatches(
   return res.json();
 }
 
-// Server action: delete + refresh list (adds x_api_key header from env X_API_KEY)
+// ---- Server action (unchanged)
 export async function deleteWatchAction(formData: FormData) {
   "use server";
   const id = String(formData.get("id") || "");
   if (!id) return;
-
   const key = process.env.X_API_KEY;
-  if (!key) {
+  if (!key)
     throw new Error(
       "Missing X_API_KEY env variable required for admin delete."
     );
-  }
-
   const res = await fetch(`${API}/admin/watches/${id}`, {
     method: "DELETE",
     headers: { "x-api-key": key },
@@ -58,7 +57,7 @@ export async function deleteWatchAction(formData: FormData) {
   revalidatePath("/admin/watches");
 }
 
-// UI helpers
+// ---- UI helpers (unchanged)
 function cls(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
@@ -69,61 +68,29 @@ function Badge({ children }: { children: ReactNode }) {
     </span>
   );
 }
-
-/**
- * Ensure deterministic (SSR=CSR) time rendering by formatting in UTC.
- * If the backend timestamp has no timezone, assume UTC.
- */
 function toISO(s?: string | null): string | undefined {
   if (!s) return undefined;
   const hasTZ = /[zZ]|[+-]\d{2}:\d{2}$/.test(s);
   const d = new Date(hasTZ ? s : `${s}Z`);
   if (isNaN(d.getTime())) return undefined;
-  return d.toISOString(); // always UTC
+  return d.toISOString();
 }
 function fmtUTC_YMD_HM(s?: string | null): string {
   const iso = toISO(s);
   if (!iso) return "—";
-  // 2025-10-19T14:37:12.345Z -> "2025-10-19 14:37"
   return iso.slice(0, 16).replace("T", " ");
 }
 
-function Btn({
-  as = "button",
-  href,
-  children,
-  variant = "ghost",
-  className,
-  ...rest
-}: any): JSX.Element {
-  const base =
-    "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition";
-  const styles =
-    variant === "primary"
-      ? "bg-slate-900 text-white border-slate-900 hover:bg-slate-800"
-      : "border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60";
-
-  if (as === "a") {
-    return (
-      <a href={href} className={cls(base, styles, className)} {...rest}>
-        {children}
-      </a>
-    );
-  }
-  return (
-    <button className={cls(base, styles, className)} {...rest}>
-      {children}
-    </button>
-  );
-}
-
+// ---- PAGE (await searchParams)
 export default async function WatchesPage({
   searchParams,
 }: {
-  searchParams: { q?: string };
+  // 👇 Next.js 15: searchParams is a Promise
+  searchParams: Promise<{ q?: string }>;
 }) {
-  const q = searchParams?.q;
-  const { items } = await getWatches(q);
+  const sp = await searchParams; // ✅ await it
+  const q = sp?.q; // now safe to read
+  const { items } = await getWatches(q); // fetch list
 
   return (
     <div className="px-4 sm:px-6 lg:px-8">
@@ -137,16 +104,24 @@ export default async function WatchesPage({
               Manage and browse your catalog.
             </p>
           </div>
-          <form action="/admin/watches" className="flex items-center gap-2">
+
+          {/* If you want search to stay on "/" use action="/" */}
+          <form action="/" className="flex items-center gap-2">
             <input
               name="q"
               placeholder="Search brand/model/name"
               defaultValue={q ?? ""}
               className="w-64 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400/70 dark:bg-slate-950 dark:border-slate-700 dark:text-slate-100"
             />
-            <Btn variant="primary" type="submit">
+            <button
+              className={cls(
+                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition",
+                "bg-slate-900 text-white border-slate-900 hover:bg-slate-800"
+              )}
+              type="submit"
+            >
               Search
-            </Btn>
+            </button>
           </form>
         </div>
 
@@ -155,7 +130,6 @@ export default async function WatchesPage({
             <table className="min-w-full text-left align-middle">
               <thead className="bg-slate-50 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 text-sm">
                 <tr className="border-b border-slate-200 dark:border-slate-800">
-                  {/* Photos moved to the first column */}
                   <th className="px-4 py-3 font-medium w-[210px]">Photos</th>
                   <th className="px-4 py-3 font-medium">ID</th>
                   <th className="px-4 py-3 font-medium">Created</th>
@@ -176,25 +150,35 @@ export default async function WatchesPage({
                       {/* Photos */}
                       <td className="px-4 py-3 border-r border-slate-200 dark:border-slate-800 w-[210px]">
                         <div className="flex gap-2">
-                          {w.photos?.slice(0, 3).map((p) => (
-                            <img
-                              key={p.id}
-                              src={`${API}${p.path.startsWith("/") ? "" : "/"}${
-                                p.path
-                              }`}
-                              width={56}
-                              height={56}
-                              className="h-14 w-14 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
-                              alt=""
-                            />
-                          ))}
+                          {(w.photos ?? []).slice(0, 3).map((p) => {
+                            // ✅ Prefer signed S3 GET URL; fallback to legacy path if present
+                            const src =
+                              p.url ??
+                              (p.path
+                                ? `${API}${p.path.startsWith("/") ? "" : "/"}${
+                                    p.path
+                                  }`
+                                : undefined);
+                            return (
+                              <img
+                                key={p.id}
+                                src={src || "/placeholder.png"}
+                                width={56}
+                                height={56}
+                                className="h-14 w-14 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
+                                alt=""
+                              />
+                            );
+                          })}
                         </div>
                       </td>
+
                       {/* ID */}
                       <td className="px-4 py-3 pl-6 text-slate-700 dark:text-slate-300">
                         {w.id}
                       </td>
-                      {/* Created (UTC to avoid hydration mismatch) */}
+
+                      {/* Created */}
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                         <time
                           dateTime={iso}
@@ -204,6 +188,7 @@ export default async function WatchesPage({
                           {fmtUTC_YMD_HM(w.createdAt)}
                         </time>
                       </td>
+
                       {/* Name */}
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-900 dark:text-slate-100 truncate max-w-[320px]">
@@ -215,10 +200,12 @@ export default async function WatchesPage({
                           </div>
                         )}
                       </td>
+
                       {/* Brand / Model */}
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                         {(w.brand ?? "—") + " / " + (w.model ?? "—")}
                       </td>
+
                       {/* Score */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -228,15 +215,19 @@ export default async function WatchesPage({
                           </span>
                         </div>
                       </td>
+
                       {/* Actions */}
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <Btn
-                          as="a"
+                        <a
                           href={`/admin/watches/${w.id}`}
-                          className="mr-2"
+                          className={cls(
+                            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition",
+                            "border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60",
+                            "mr-2"
+                          )}
                         >
                           View
-                        </Btn>
+                        </a>
                         <DeleteWatchForm id={w.id} action={deleteWatchAction} />
                       </td>
                     </tr>

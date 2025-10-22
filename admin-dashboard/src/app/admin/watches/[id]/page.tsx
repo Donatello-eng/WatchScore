@@ -1,4 +1,4 @@
-// src/app/admin/watches/[id]/page.tsx (self-contained)
+// src/app/admin/watches/[id]/page.tsx
 
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
@@ -7,7 +7,30 @@ import AISummary from "../AISummary";
 
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
-async function getWatch(id: string) {
+type Photo = {
+  id: number;
+  url?: string | null; // signed S3 GET (preferred)
+  key?: string | null; // S3 key (server-side)
+  path?: string | null; // legacy local path (fallback)
+  index?: number | null;
+  mime?: string | null;
+};
+
+type Watch = {
+  id: number;
+  name?: string | null;
+  subtitle?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  year?: number | null;
+  overallLetter?: string | null;
+  overallNumeric?: number | null;
+  createdAt?: string | null;
+  photos: Photo[];
+  ai?: any;
+};
+
+async function getWatch(id: string): Promise<Watch> {
   const res = await fetch(`${API}/watches/${id}`, { cache: "no-store" });
   if (res.status === 404) notFound();
   if (!res.ok) throw new Error(await res.text());
@@ -43,17 +66,26 @@ export async function updateWatchJsonAction(formData: FormData) {
     if (!Number.isNaN(n)) payload.overallNumeric = n;
   }
 
+  // ✅ Include admin key; your FastAPI admin routes require x-api-key
+  const adminKey = process.env.X_API_KEY;
+  if (!adminKey)
+    throw new Error("Missing X_API_KEY env variable for admin edits.");
+
   const res = await fetch(`${API}/admin/watches/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": adminKey,
+    },
     body: JSON.stringify(payload),
+    cache: "no-store",
   });
 
   if (!res.ok) throw new Error(await res.text());
   revalidatePath(`/admin/watches/${id}`);
 }
 
-// --- UI PRIMITIVES ---------------------------------------------------------
+// ---- UI primitives
 function cls(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
@@ -99,7 +131,7 @@ function CardBody({ children }: { children: ReactNode }) {
   return <div className="p-5">{children}</div>;
 }
 
-// --- PREVIEW + EDIT (no client hooks, fully SSR-friendly) ------------------
+// --- JSON editor without client hooks
 function JSONEditorCard({ id, initial }: { id: string; initial: any }) {
   const preview = JSON.stringify(initial, null, 2);
   const formId = `json-edit-${id}`;
@@ -107,10 +139,9 @@ function JSONEditorCard({ id, initial }: { id: string; initial: any }) {
 
   return (
     <Card>
-      {/* Hidden checkbox controls mode; must precede BOTH blocks and share the same parent */}
       <input id={toggleId} type="checkbox" className="peer sr-only" />
 
-      {/* VIEW MODE (visible when NOT checked) */}
+      {/* View mode */}
       <div className="peer-checked:hidden">
         <CardHeader
           title="Details JSON"
@@ -140,7 +171,7 @@ function JSONEditorCard({ id, initial }: { id: string; initial: any }) {
         </CardBody>
       </div>
 
-      {/* EDIT MODE (visible when checked) */}
+      {/* Edit mode */}
       <div className="hidden peer-checked:block">
         <CardHeader
           title="Edit JSON"
@@ -208,7 +239,7 @@ function JSONEditorCard({ id, initial }: { id: string; initial: any }) {
   );
 }
 
-// --- PAGE ------------------------------------------------------------------
+// --- PAGE
 export default async function WatchDetail({
   params,
 }: {
@@ -250,16 +281,22 @@ export default async function WatchDetail({
               <CardHeader title="Photos" />
               <CardBody>
                 <div className="grid gap-3">
-                  {w.photos?.map((p: any) => (
-                    <img
-                      key={p.id}
-                      src={`${API}${p.path.startsWith("/") ? "" : "/"}${
-                        p.path
-                      }`}
-                      alt=""
-                      className="w-full max-w-[360px] rounded-xl border border-slate-200 dark:border-slate-800"
-                    />
-                  ))}
+                  {(w.photos ?? []).map((p) => {
+                    // ✅ Prefer signed S3 URL; fallback to legacy path if present
+                    const src =
+                      p.url ??
+                      (p.path
+                        ? `${API}${p.path.startsWith("/") ? "" : "/"}${p.path}`
+                        : undefined);
+                    return (
+                      <img
+                        key={p.id}
+                        src={src || "/placeholder.png"}
+                        alt=""
+                        className="w-full max-w-[360px] rounded-xl border border-slate-200 dark:border-slate-800"
+                      />
+                    );
+                  })}
                 </div>
               </CardBody>
             </Card>
@@ -274,7 +311,8 @@ export default async function WatchDetail({
               </CardBody>
             </Card>
 
-            <JSONEditorCard id={w.id} initial={starter} />
+            {/* Pass a string id into the form */}
+            <JSONEditorCard id={String(w.id)} initial={starter} />
           </div>
         </div>
       </div>

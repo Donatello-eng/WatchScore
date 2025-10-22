@@ -29,14 +29,13 @@ model Photo {
   id        Int      @id @default(autoincrement())
   watchId   Int
   watch     Watch    @relation(fields: [watchId], references: [id], onDelete: Cascade)
-  url       String   // REQUIRED now
+
+  // add this:
+  key       String?  // S3 object key, e.g. "watches/123/photo_1_abc.jpg"
+
+  url       String?  // optional: you can omit storing URL since we’ll sign GET each time
   mime      String?
   index     Int?
-  provider  String?
-  bucket    String?
-  key       String?
-  width     Int?
-  height    Int?
   createdAt DateTime @default(now())
 
   @@index([watchId])
