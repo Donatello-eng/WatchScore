@@ -11,7 +11,6 @@ from typing import List, Optional, Dict, Any, cast
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 from prisma import Prisma
@@ -20,6 +19,9 @@ from prisma.engine.errors import AlreadyConnectedError, NotConnectedError
 # --- Optional: AI + S3 support ---
 from dotenv import load_dotenv
 from openai import OpenAI
+import asyncio
+
+import time
 
 try:
     import boto3
@@ -83,10 +85,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Local static (dev fallback) – public at http://localhost:8000/uploads/...
-UPLOAD_ROOT = Path("uploads")
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_ROOT)), name="uploads")
-
 # -----------------------------------------------------------------------------
 # Security helper (simple admin key header)
 # -----------------------------------------------------------------------------
@@ -115,7 +113,6 @@ class FinalizePayload(BaseModel):
 # -----------------------------------------------------------------------------
 @app.on_event("startup")
 async def on_startup():
-    os.makedirs(UPLOAD_ROOT, exist_ok=True)
     try:
         await db.connect()
     except AlreadyConnectedError:
@@ -173,21 +170,6 @@ def _sse_extra_args() -> Dict[str, Any]:
         return extra
     return {"ServerSideEncryption": "AES256"}
 
-async def _save_local(files: List[UploadFile], watch_id: int) -> List[str]:
-    target = UPLOAD_ROOT / "watches" / str(watch_id)
-    os.makedirs(target, exist_ok=True)
-    urls: List[str] = []
-    for idx, uf in enumerate(files, start=1):
-        ext = Path(uf.filename or "").suffix or ".jpg"
-        dest = target / f"photo_{idx}{ext}"
-        with dest.open("wb") as out:
-            while True:
-                chunk = await uf.read(1024 * 1024)
-                if not chunk:
-                    break
-                out.write(chunk)
-        urls.append(f"http://localhost:8000/uploads/watches/{watch_id}/{dest.name}")
-    return urls
 
 async def _save_s3(files: List[UploadFile], watch_id: int) -> List[str]:
     if not (S3_ENABLED and s3 and AWS_S3_BUCKET):
@@ -300,56 +282,101 @@ def build_ai_prompt() -> str:
         "  reliability.level must map to label: very low=1, low=2, medium=3, high=4, very high=5 (scale=\"ordinal_1_5\").\n"
         "- Keep all other units as specified (e.g., s_per_day, g, m, USD). Do NOT add extra keys. Fill every field.\n"
         "\n"
-        "{\n"
+         "{\n"
         "  \"name\": \"string\",\n"
         "  \"subtitle\": \"string\",\n"
         "  \"overall\": {\n"
         "    \"conclusion\": \"string\",\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0, \"scale\": \"letter_0_100\" }\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
         "  },\n"
         "  \"brand_reputation\": {\n"
         "    \"type\": \"string\",\n"
         "    \"legacy\": { \"value\": 0, \"unit\": \"years\" },\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0, \"scale\": \"letter_0_100\" }\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
         "  },\n"
         "  \"movement_quality\": {\n"
         "    \"type\": \"string\",\n"
-        "    \"accuracy\": { \"value\": 0, \"unit\": \"s_per_day\", \"raw\": \"string\" },\n"
-        "    \"reliability\": { \"label\": \"string\", \"level\": 1, \"scale\": \"ordinal_1_5\" },\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0, \"scale\": \"letter_0_100\" }\n"
+        "    \"accuracy\": { \"value\": 2, \"unit\": \"sec/day\"},\n"
+        "    \"reliability\": { \"label\": \"string\"},\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
         "  },\n"
         "  \"materials_build\": {\n"
-        "    \"total_weight\": { \"value\": 0, \"unit\": \"g\", \"raw\": \"string\" },\n"
-        "    \"case_material\": { \"raw\": \"string\", \"material\": \"string\", \"grade\": \"string\" },\n"
-        "    \"crystal\": { \"raw\": \"string\", \"material\": \"string\", \"coating\": \"string\" },\n"
-        "    \"build_quality\": { \"label\": \"string\", \"level\": 1, \"scale\": \"ordinal_1_5\" },\n"
-        "    \"water_resistance\": { \"value\": 0, \"unit\": \"m\", \"raw\": \"string\" },\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0, \"scale\": \"letter_0_100\" }\n"
+        "    \"total_weight\": { \"value\": 0, \"unit\": \"g\"},\n"
+        "    \"case_material\": {\"material\": \"string\"},\n"
+        "    \"crystal\": {\"material\": \"string\"},\n"
+        "    \"build_quality\": { \"label\": \"string\"},\n"
+        "    \"water_resistance\": { \"value\": 0, \"unit\": \"m\"},\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
         "  },\n"
         "  \"maintenance_risks\": {\n"
-        "    \"service_interval\": { \"min\": 0, \"max\": 0, \"unit\": \"y\", \"raw\": \"string\" },\n"
-        "    \"service_cost\": { \"min\": 0, \"max\": 0, \"currency\": \"USD\", \"raw\": \"string\" },\n"
-        "    \"parts_availability\": { \"label\": \"string\", \"level\": 1, \"scale\": \"ordinal_1_5\" },\n"
-        "    \"serviceability\": { \"raw\": \"string\", \"restricted_to_authorized\": false },\n"
+        "    \"service_interval\": { \"min\": 0, \"max\": 0, \"unit\": \"y\"},\n"
+        "    \"service_cost\": { \"min\": 0, \"max\": 0, \"currency\": \"USD\"},\n"
+        "    \"parts_availability\": { \"label\": \"string\"},\n"
+        "    \"serviceability\": { \"raw\": \"string\"},\n"
         "    \"known_weak_points\": [\"string\"],\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0, \"scale\": \"letter_0_100\" }\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
         "  },\n"
         "  \"value_for_money\": {\n"
-        "    \"list_price\": { \"amount\": 0, \"currency\": \"USD\", \"approx\": true, \"raw\": \"string\" },\n"
-        "    \"resale_average\": { \"amount\": 0, \"currency\": \"USD\", \"approx\": true, \"raw\": \"string\" },\n"
-        "    \"market_liquidity\": { \"label\": \"string\", \"level\": 1, \"scale\": \"ordinal_1_5\" },\n"
-        "    \"holding_value\": { \"label\": \"string\", \"level\": 1, \"scale\": \"ordinal_1_5\", \"note\": \"string\" },\n"
-        "    \"value_for_wearer\": { \"label\": \"string\", \"level\": 1, \"scale\": \"ordinal_1_5\" },\n"
-        "    \"value_for_collector\": { \"label\": \"string\", \"level\": 1, \"scale\": \"ordinal_1_5\" },\n"
+        "    \"list_price\": { \"amount\": 0, \"currency\": \"USD\"},\n"
+        "    \"resale_average\": { \"amount\": 0, \"currency\": \"USD\"},\n"
+        "    \"market_liquidity\": { \"label\": \"string\"},\n"
+        "    \"holding_value\": { \"label\": \"string\",\"note\": \"string\" },\n"
+        "    \"value_for_wearer\": { \"label\": \"string\"},\n"
+        "    \"value_for_collector\": { \"label\": \"string\"},\n"
         "    \"spec_efficiency_note\": { \"label\": \"string\", \"note\": \"string\" },\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0, \"scale\": \"letter_0_100\" }\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
         "  },\n"
         "  \"alternatives\": [\n"
-        "    { \"model\": \"string\", \"movement\": \"string\", \"price\": { \"amount\": 0, \"currency\": \"USD\", \"raw\": \"string\" } }\n"
+        "    { \"model\": \"string\", \"movement\": \"string\", \"price\": { \"amount\": 0, \"currency\": \"USD\"} }\n"
         "  ],\n"
         "  \"meta\": { \"schema_version\": \"1.2.0\", \"units_system\": \"SI\", \"release_year\": 0 }\n"
         "}\n"
     )
+
+def build_single_image_prompt() -> str:
+    """
+    Lightweight per-image extraction. Keep it small so each parallel call is fast.
+    The aggregator will merge these into the full schema defined in build_ai_prompt().
+    """
+    return (
+        "You are a watch expert. Analyze ONE photo of a watch and return STRICT JSON with this schema:\n"
+        "{\n"
+        '  "observations": {\n'
+        '    "name": "string",\n'
+        '    "subtitle": "string",\n'
+        '    "brand": "string",\n'
+        '    "model": "string",\n'
+        '    "meta": { "release_year": 0 }\n'
+        "  }\n"
+        "}\n"
+        "Rules:\n"
+        '- If unsure, use "—" or 0. No commentary. Return ONLY JSON.\n'
+    )
+
+async def _gpt_json(
+    messages: List[Dict[str, Any]],
+    model: Optional[str] = None,
+    max_tokens: Optional[int] = None,  # kept for call-compatibility; ignored
+) -> Dict[str, Any]:
+    """
+    Run a chat completion that MUST return JSON.
+    Compatible with gpt-5: no temperature, no token-limit args.
+    Executes in a thread so it won't block the event loop.
+    """
+    model_choice = model or AI_MODEL
+    kwargs: Dict[str, Any] = {
+        "model": model_choice,
+        "messages": messages,
+        "response_format": {"type": "json_object"},
+        # NOTE: do NOT set temperature/max_tokens/max_completion_tokens for gpt-5
+    }
+    resp = await asyncio.to_thread(client.chat.completions.create, **kwargs)  # type: ignore[arg-type]
+    text = (resp.choices[0].message.content or "{}").strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        return {}
+
 
 # -----------------------------------------------------------------------------
 # Routes (watches-first, no sessions)
@@ -402,19 +429,16 @@ async def finalize_watch(watch_id: int, payload: FinalizePayload):
 
     ai_data: Dict[str, Any] = {}
     if payload.analyze and client:
+        ai_t0 = time.perf_counter()
         vision_urls: List[str] = []
         for p in payload.photos:
             k = p.get("key")
             if k:
                 vision_urls.append(_presign_get(k, expires=60 * 30))
+        
+        ai_t1 = time.perf_counter()
 
         if vision_urls:
-            print("[vision][finalize_watch] presigned URLs:", vision_urls)
-            bad = [u for u in vision_urls if not _head_ok(u)]
-            if bad:
-                print("[vision][finalize_watch] BAD presigned URLs:", bad)
-                raise HTTPException(500, "Presigned image URL(s) are not reachable. Check AWS_REGION, bucket policy, and expiry.")
-
             content: List[Dict[str, Any]] = [{"type": "text", "text": build_ai_prompt()}]
             for u in vision_urls:
                 content.append({"type": "image_url", "image_url": {"url": u}})
@@ -432,10 +456,13 @@ async def finalize_watch(watch_id: int, payload: FinalizePayload):
             if AI_MODEL in {"gpt-4o-mini", "gpt-4o", "gpt-4.1"}:
                 kwargs["temperature"] = 0.2  # type: ignore
 
+            ai_t2 = ai_t1
             try:
                 resp = client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
                 ai_text = resp.choices[0].message.content or "{}"
                 ai_data = json.loads(ai_text)
+
+                ai_t3 = time.perf_counter()
 
                 await db.watchanalysis.create(
                     data={"watchId": watch_id, "aiJsonStr": json.dumps(ai_data, ensure_ascii=False)}
@@ -443,6 +470,16 @@ async def finalize_watch(watch_id: int, payload: FinalizePayload):
                 fields = _extract_watch_fields(cast(Dict[str, Any], ai_data))
                 if fields:
                     await db.watch.update(where={"id": watch_id}, data=fields)
+
+                ai_t4 = time.perf_counter()
+                print({
+                    "where": "finalize_watch",
+                    "watch_id": watch_id,
+                    "presign_ms": int((ai_t1 - ai_t0) * 1000),
+                    "precheck_ms": int((ai_t2 - ai_t1) * 1000),
+                    "openai_ms": int((ai_t3 - ai_t2) * 1000),
+                    "db_ms": int((ai_t4 - ai_t3) * 1000),
+                })
             except Exception as e:
                 print("[AI finalize_watch] error:", e)
 
@@ -451,33 +488,26 @@ async def finalize_watch(watch_id: int, payload: FinalizePayload):
         include={"photos": True, "analysis": True},
     )
     return _serialize_watch(full)
-
 @app.post("/watches")
 async def create_watch(files: List[UploadFile] = File(...)):
     if not files:
         raise HTTPException(400, "No files provided")
     if len(files) > 3:
         raise HTTPException(400, "Max 3 files")
+    if not (S3_ENABLED and s3 and AWS_S3_BUCKET):
+        raise HTTPException(500, "S3 not configured")
 
     watch = await db.watch.create(data={})
 
-    values = await (_save_s3(files, watch.id) if S3_ENABLED else _save_local(files, watch.id))
-
-    for idx, value in enumerate(values, start=1):
-        if S3_ENABLED:
-            await db.photo.create(data={"watchId": watch.id, "key": value, "index": idx})
-        else:
-            await db.photo.create(data={"watchId": watch.id, "url": value, "index": idx})
+    # Upload directly to S3 and store KEYS only
+    keys = await _save_s3(files, watch.id)
+    for idx, key in enumerate(keys, start=1):
+        await db.photo.create(data={"watchId": watch.id, "key": key, "index": idx})
 
     ai_data: Dict[str, Any] = {}
     if client:
-        vision_urls: List[str] = []
-        if S3_ENABLED:
-            for key in values:
-                vision_urls.append(_presign_get(key, expires=60 * 30))
-        else:
-            vision_urls = list(values)
-
+        # Presign each key for vision analysis
+        vision_urls = [_presign_get(k, expires=60 * 30) for k in keys]
         print("[vision][create_watch] presigned URLs:", vision_urls)
         bad = [u for u in vision_urls if not _head_ok(u)]
         if bad:
@@ -524,6 +554,7 @@ async def create_watch(files: List[UploadFile] = File(...)):
     )
     return _serialize_watch(full)
 
+
 @app.get("/watches")
 async def list_watches(take: int = 20, skip: int = 0, q: Optional[str] = None):
     take = max(1, min(take, 100))
@@ -544,6 +575,9 @@ async def list_watches(take: int = 20, skip: int = 0, q: Optional[str] = None):
 
 @app.get("/watches/{watch_id}")
 async def get_watch(watch_id: int):
+    if not (S3_ENABLED and s3 and AWS_S3_BUCKET):
+        raise HTTPException(500, "S3 not configured")
+
     w = await db.watch.find_unique(
         where={"id": watch_id},
         include={"photos": True, "analysis": True},
@@ -553,16 +587,16 @@ async def get_watch(watch_id: int):
 
     out = _serialize_watch(w)
 
-    if S3_ENABLED and s3 and AWS_S3_BUCKET:
-        signed_photos = []
-        for p in out.get("photos", []):
-            key = p.get("key") or None
-            if key:
-                signed = _presign_get(key, expires=60 * 5)
-                signed_photos.append({**p, "url": signed})
-            else:
-                signed_photos.append({**p})
-        out["photos"] = signed_photos
+    # Always presign S3 keys for client access
+    signed_photos = []
+    for p in out.get("photos", []):
+        key = p.get("key") or None
+        if key:
+            signed = _presign_get(key, expires=60 * 5)
+            signed_photos.append({**p, "url": signed})
+        else:
+            signed_photos.append({**p})
+    out["photos"] = signed_photos
 
     return out
 
@@ -583,53 +617,68 @@ async def admin_delete_watch(watch_id: int):
     except Exception:
         raise HTTPException(404, "Watch not found")
     return {"ok": True}
-
 @app.post("/watches/{watch_id}/reanalyze", dependencies=[Depends(require_admin)])
 async def reanalyze_watch(watch_id: int):
+    """
+    Requires the helper functions:
+      - build_single_image_prompt()
+      - _gpt_json(messages, model=None, max_tokens=400)
+    """
+    if not (S3_ENABLED and s3 and AWS_S3_BUCKET):
+        raise HTTPException(500, "S3 not configured")
+    if not client:
+        raise HTTPException(500, "OPENAI_API_KEY not set")
+
+    # Load photos for this watch
     w = await db.watch.find_unique(where={"id": watch_id}, include={"photos": True})
     if not w:
         raise HTTPException(404, "Watch not found")
 
-    if not client:
-        raise HTTPException(500, "OPENAI_API_KEY not set")
-
+    # Build presigned URLs for all photos
     vision_urls: List[str] = []
     for p in w.photos:
-        if getattr(p, "url", None):
-            vision_urls.append(p.url)
-        elif S3_ENABLED and getattr(p, "key", None):
+        if getattr(p, "key", None):
             vision_urls.append(_presign_get(p.key, expires=60 * 30))  # 30 min
 
     if not vision_urls:
         raise HTTPException(400, "No photos to analyze")
 
-    print("[vision][reanalyze_watch] presigned URLs:", vision_urls)
-    bad = [u for u in vision_urls if not _head_ok(u)]
-    if bad:
-        print("[vision][reanalyze_watch] BAD presigned URLs:", bad)
-        raise HTTPException(500, "Presigned image URL(s) are not reachable. Check AWS_REGION, bucket policy, and expiry.")
+    # --- 1) PARALLEL per-image analysis (small JSON per photo) ---
+    single_prompt = build_single_image_prompt()
+    sys_msg = {"role": "system", "content": "Return ONLY strict JSON. No extra keys. No commentary."}
 
-    content: List[Dict[str, Any]] = [{"type": "text", "text": build_ai_prompt()}]
-    for u in vision_urls:
-        content.append({"type": "image_url", "image_url": {"url": u}})
+    async def analyze_one(url: str) -> Dict[str, Any]:
+        user_content: List[Dict[str, Any]] = [
+            {"type": "text", "text": single_prompt},
+            {"type": "image_url", "image_url": {"url": url, "detail": "low"}},
+        ]
+        msgs = [sys_msg, {"role": "user", "content": user_content}]
+        return await _gpt_json(msgs, model=os.getenv("AI_MODEL", AI_MODEL))
 
-    messages = [
-        {"role": "system", "content": "Return ONLY the strict JSON that matches the schema. No extra keys, no commentary."},
-        {"role": "user", "content": content},
+    partials: List[Dict[str, Any]] = await asyncio.gather(*(analyze_one(u) for u in vision_urls))
+
+    # --- 2) AGGREGATE all partials into ONE strict-schema JSON ---
+    merge_instructions = (
+        "You are a watch expert. The following JSON objects are observations from multiple photos of the SAME watch. "
+        "Merge them into ONE final result that matches EXACTLY the schema below. Resolve conflicts by majority/clarity; "
+        "if still unsure use \"—\" or 0. Keep all constraints and scoring rules. Return ONLY JSON."
+    )
+    schema = build_ai_prompt()
+    merge_text = (
+        merge_instructions
+        + "\n\nPARTIALS:\n"
+        + json.dumps(partials, ensure_ascii=False)
+        + "\n\nSCHEMA:\n"
+        + schema
+    )
+
+    merge_msgs = [
+        {"role": "system", "content": "Return ONLY the strict JSON that matches the schema. No commentary."},
+        {"role": "user", "content": [{"type": "text", "text": merge_text}]},
     ]
+    ai_data = await _gpt_json(merge_msgs, model=os.getenv("AI_MODEL", AI_MODEL), max_tokens=900)
 
-    kwargs: Dict[str, Any] = {
-        "model": AI_MODEL,
-        "messages": messages,
-        "response_format": {"type": "json_object"},
-    }
-    if AI_MODEL in {"gpt-4o-mini", "gpt-4o", "gpt-4.1"}:
-        kwargs["temperature"] = 0.2  # type: ignore
-
-    resp = client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
-    ai_text = resp.choices[0].message.content or "{}"
-    ai_data = json.loads(ai_text)
-
+    # Persist full JSON (remove this block if you don't store aiJsonStr)
     exists = await db.watchanalysis.find_unique(where={"watchId": watch_id})
     if exists:
         await db.watchanalysis.update(
@@ -641,9 +690,9 @@ async def reanalyze_watch(watch_id: int):
             data={"watchId": watch_id, "aiJsonStr": json.dumps(ai_data, ensure_ascii=False)},
         )
 
+    # Update core fields on Watch
     fields = _extract_watch_fields(ai_data)
     if fields:
         await db.watch.update(where={"id": watch_id}, data=fields)
 
     return {"ok": True, "watchId": watch_id, "ai": ai_data}
-
