@@ -262,43 +262,63 @@ def _presign_put(key: str, content_type: str, expires: int = 900) -> str:
 # -----------------------------------------------------------------------------
 # Prompt builder (strict schema)
 # -----------------------------------------------------------------------------
+
+def build_is_watch_prompt() -> str:
+    """
+    Minimal prompt to test latency impact of prompt/JSON size vs image payload.
+    The model must return only a tiny JSON object.
+    """
+    return (
+        "You are a strict JSON bot. Look at ALL attached images and decide if "
+        "they collectively depict a wristwatch (any type). Return ONLY this JSON:\n"
+        "{\n"
+        '  "is_watch": true | false,\n'
+        '  "confidence": 0.0,   // 0.0–1.0\n'
+        '  "notes": "string"    // very short, <= 10 words\n'
+        "}\n"
+        "Rules:\n"
+        "- Analyze all images together.\n"
+        "- Keep notes short. No extra keys. No commentary."
+    )
+
 def build_ai_prompt() -> str:
     return (
         "You are a watch expert. Analyze the provided photos and return a STRICT JSON with the exact schema below.\n"
         "Return ONLY JSON (no commentary). If unsure about any field, use the string \"—\" or numeric 0. Be realistic and consistent.\n"
         "\n"
         "SCORING RULES (apply to ALL \"score\" objects):\n"
-        "- Allowed letters (best→worst): A, B, C, D\n"
-        "- Map numeric (0–100) to letters:\n"
-        "  A: 90–100, B: 75–89, C: 60–74, D: 0–59\n"
-        "- score.letter MUST match the bin containing score.numeric. Use the same scale label \"letter_0_100\" everywhere.\n"
-        "- Do NOT use any +/- modifiers.\n"
+        "- score.numeric MUST be an INTEGER in the range 0–100 (not a string).\n"
+        "- Allowed letters (best→worst): A, B, C, D.\n"
+        "- Map numeric→letter using bins: A: 90–100, B: 75–89, C: 60–74, D: 0–59.\n"
+        "- score.letter MUST match the bin containing score.numeric.\n"
+        "- If a numeric would fall outside 0–100, clamp it to 0 or 100 BEFORE setting the letter.\n"
+        "- Do NOT use any +/- modifiers for letters.\n"
         "\n"
         "FIELD CONSTRAINTS:\n"
         "- brand_reputation.type: 1–2 words, lowercase (e.g., \"horology\", \"microbrand\").\n"
         "- brand_reputation.legacy: ONLY value (number) and unit (\"years\").\n"
         "- movement_quality.type: ONE word (e.g., \"automatic\", \"manual\", \"quartz\", \"spring-drive\").\n"
-        "- movement_quality.reliability.label: one of {\"very low\",\"low\",\"medium\",\"high\",\"very high\"};\n"
-        "  reliability.level must map to label: very low=1, low=2, medium=3, high=4, very high=5 (scale=\"ordinal_1_5\").\n"
-        "- Keep all other units as specified (e.g., s_per_day, g, m, USD). Do NOT add extra keys. Fill every field.\n"
+        "- movement_quality.reliability.label: one of {\"very low\",\"low\",\"medium\",\"high\",\"very high\"}.\n"
+        "- Keep all other units as specified (e.g., sec/day, g, m, USD). Do NOT add extra keys. Fill every field.\n"
+        "- Arrays must be present; if unknown, put a single placeholder like [\"—\"].\n"
         "\n"
-         "{\n"
+        "{\n"
         "  \"name\": \"string\",\n"
         "  \"subtitle\": \"string\",\n"
         "  \"overall\": {\n"
         "    \"conclusion\": \"string\",\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0 }\n"
         "  },\n"
         "  \"brand_reputation\": {\n"
         "    \"type\": \"string\",\n"
         "    \"legacy\": { \"value\": 0, \"unit\": \"years\" },\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0 }\n"
         "  },\n"
         "  \"movement_quality\": {\n"
         "    \"type\": \"string\",\n"
-        "    \"accuracy\": { \"value\": 2, \"unit\": \"sec/day\"},\n"
+        "    \"accuracy\": { \"value\": 0, \"unit\": \"sec/day\"},\n"
         "    \"reliability\": { \"label\": \"string\"},\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0 }\n"
         "  },\n"
         "  \"materials_build\": {\n"
         "    \"total_weight\": { \"value\": 0, \"unit\": \"g\"},\n"
@@ -306,7 +326,7 @@ def build_ai_prompt() -> str:
         "    \"crystal\": {\"material\": \"string\"},\n"
         "    \"build_quality\": { \"label\": \"string\"},\n"
         "    \"water_resistance\": { \"value\": 0, \"unit\": \"m\"},\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0 }\n"
         "  },\n"
         "  \"maintenance_risks\": {\n"
         "    \"service_interval\": { \"min\": 0, \"max\": 0, \"unit\": \"y\"},\n"
@@ -314,17 +334,17 @@ def build_ai_prompt() -> str:
         "    \"parts_availability\": { \"label\": \"string\"},\n"
         "    \"serviceability\": { \"raw\": \"string\"},\n"
         "    \"known_weak_points\": [\"string\"],\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0 }\n"
         "  },\n"
         "  \"value_for_money\": {\n"
         "    \"list_price\": { \"amount\": 0, \"currency\": \"USD\"},\n"
         "    \"resale_average\": { \"amount\": 0, \"currency\": \"USD\"},\n"
         "    \"market_liquidity\": { \"label\": \"string\"},\n"
-        "    \"holding_value\": { \"label\": \"string\",\"note\": \"string\" },\n"
+        "    \"holding_value\": { \"label\": \"string\", \"note\": \"string\" },\n"
         "    \"value_for_wearer\": { \"label\": \"string\"},\n"
         "    \"value_for_collector\": { \"label\": \"string\"},\n"
         "    \"spec_efficiency_note\": { \"label\": \"string\", \"note\": \"string\" },\n"
-        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": \"letter_0_100\"}\n"
+        "    \"score\": { \"letter\": \"A|B|C|D\", \"numeric\": 0 }\n"
         "  },\n"
         "  \"alternatives\": [\n"
         "    { \"model\": \"string\", \"movement\": \"string\", \"price\": { \"amount\": 0, \"currency\": \"USD\"} }\n"
@@ -332,6 +352,7 @@ def build_ai_prompt() -> str:
         "  \"meta\": { \"schema_version\": \"1.2.0\", \"units_system\": \"SI\", \"release_year\": 0 }\n"
         "}\n"
     )
+
 
 def build_single_image_prompt() -> str:
     """
@@ -381,6 +402,144 @@ async def _gpt_json(
 # -----------------------------------------------------------------------------
 # Routes (watches-first, no sessions)
 # -----------------------------------------------------------------------------
+# --- ADD: test init endpoint (clone of /watches/init but at a different path) ---
+@app.post("/watches-test/init")
+async def init_watch_presign_test(
+    count: int = Body(embed=True),
+    contentTypes: Optional[List[str]] = Body(default=None, embed=True),
+):
+    if count < 1 or count > 3:
+        raise HTTPException(400, "count must be 1..3")
+    if not (S3_ENABLED and s3 and AWS_S3_BUCKET):
+        raise HTTPException(500, "S3 not configured")
+
+    watch = await db.watch.create(data={})
+    items = []
+
+    for i in range(count):
+        ct = (contentTypes[i] if contentTypes and i < len(contentTypes) else "image/jpeg")
+        ext = _guess_ext(None, ct)
+        key = f"watches/{watch.id}/photo_{i+1}_{uuid.uuid4().hex}{ext}"
+
+        upload_url = _presign_put(key, ct, expires=15 * 60)
+        headers = {"Content-Type": ct}
+        if S3_REQUIRE_SSE == "aws:kms":
+            headers["x-amz-server-side-encryption"] = "aws:kms"
+            if S3_KMS_KEY_ID:
+                headers["x-amz-server-side-encryption-aws-kms-key-id"] = S3_KMS_KEY_ID
+        else:
+            headers["x-amz-server-side-encryption"] = "AES256"
+
+        items.append({"key": key, "uploadUrl": upload_url, "headers": headers})
+
+        print("[presign-test]", {"bucket": AWS_S3_BUCKET, "region": AWS_REGION, "key": key, "ct": ct})
+
+    return {"watchId": watch.id, "uploads": items}
+
+@app.post("/watches-test/{watch_id}/finalize")
+async def finalize_watch_test(watch_id: int, payload: FinalizePayload):
+    """
+    Minimal analysis path to isolate OpenAI latency:
+    - same S3 presign + photo storage as normal
+    - tiny prompt + tiny JSON
+    - returns timing breakdown
+    """
+    w = await db.watch.find_unique(where={"id": watch_id})
+    if not w:
+        raise HTTPException(404, "Watch not found")
+
+    # Save photo keys (same as normal)
+    for idx, p in enumerate(payload.photos, start=1):
+        key = p.get("key")
+        if not key:
+            continue
+        await db.photo.create(data={"watchId": watch_id, "key": key, "index": idx})
+
+    result: Dict[str, Any] = {"is_watch": False, "confidence": 0.0, "notes": ""}
+
+    t0 = time.perf_counter()
+
+    if payload.analyze and client:
+        # Presign the exact same way (so S3 cost is comparable)
+        vision_urls: List[str] = []
+        for p in payload.photos:
+            k = p.get("key")
+            if k:
+                vision_urls.append(_presign_get(k, expires=60 * 30))
+        t1 = time.perf_counter()
+
+        if vision_urls:
+            content: List[Dict[str, Any]] = [{"type": "text", "text": build_is_watch_prompt()}]
+            # Use 'detail': 'low' to further minimize cost/latency variance
+            for u in vision_urls:
+                content.append({"type": "image_url", "image_url": {"url": u, "detail": "low"}})
+
+            messages = [
+                {"role": "system", "content": "Return ONLY the tiny JSON. No extra keys. No commentary."},
+                {"role": "user", "content": content},
+            ]
+
+            kwargs: Dict[str, Any] = {
+                "model": AI_MODEL,  # keep your current model to make the comparison apples-to-apples
+                "messages": messages,
+                "response_format": {"type": "json_object"},
+            }
+
+            # Optional: slight temp for vision if you're on older 4o variants
+            if AI_MODEL in {"gpt-4o-mini", "gpt-4o", "gpt-4.1"}:
+                kwargs["temperature"] = 0.0  # type: ignore
+
+            t2 = time.perf_counter()
+            try:
+                resp = client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
+                ai_text = (resp.choices[0].message.content or "{}").strip()
+                parsed = json.loads(ai_text)
+                # Defensive parse with defaults
+                result["is_watch"] = bool(parsed.get("is_watch", False))
+                result["confidence"] = float(parsed.get("confidence", 0.0))
+                notes = parsed.get("notes")
+                result["notes"] = notes if isinstance(notes, str) else ""
+            except Exception as e:
+                print("[AI finalize_watch_test] error:", e)
+            t3 = time.perf_counter()
+        else:
+            t1 = t2 = t3 = time.perf_counter()
+    else:
+        t1 = t2 = t3 = time.perf_counter()
+
+    # Prepare presigned photo URLs for client viewing (same behavior)
+    full = await db.watch.find_unique(
+        where={"id": watch_id},
+        include={"photos": True},
+    )
+
+    photos_out = []
+    for p in (full.photos if full else []):
+        if getattr(p, "key", None):
+            photos_out.append({"key": p.key, "url": _presign_get(p.key, expires=60 * 5)})
+
+    print({
+    "where": "finalize_watch_test",
+    "watch_id": watch_id,
+    "timings_ms": {
+        "total": int((time.perf_counter() - t0) * 1000),
+        "presign": int((t1 - t0) * 1000),
+        "pre_model": int((t2 - t1) * 1000),
+        "openai": int((t3 - t2) * 1000),
+    },
+}, flush=True)
+
+    return {
+        "watchId": watch_id,
+        "photos": photos_out,
+        "ai": result,
+        "timings_ms": {
+            "total": int((time.perf_counter() - t0) * 1000),
+            "presign": int((t1 - t0) * 1000),
+            "pre_model": int((t2 - t1) * 1000),   # building messages etc.
+            "openai": int((t3 - t2) * 1000),      # pure model latency window
+        },
+    }
 @app.post("/watches/init")
 async def init_watch_presign(
     count: int = Body(embed=True),

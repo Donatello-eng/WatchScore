@@ -24,7 +24,11 @@ export async function putToS3(
   fileUri: string,
   headers: Record<string, string>
 ) {
-  console.log("PUT S3", { uploadUrl: uploadUrl.slice(0, 90) + "…", headers, fileUri });
+  console.log("PUT S3", {
+    uploadUrl: uploadUrl.slice(0, 90) + "…",
+    headers,
+    fileUri,
+  });
 
   const res = await FileSystem.uploadAsync(uploadUrl, fileUri, {
     httpMethod: "PUT",
@@ -35,7 +39,9 @@ export async function putToS3(
   console.log("PUT S3 result", res.status, (res.body || "").slice(0, 200));
 
   if (res.status < 200 || res.status >= 300) {
-    throw new Error(`S3 upload failed: ${res.status} ${res.body?.slice(0, 200)}`);
+    throw new Error(
+      `S3 upload failed: ${res.status} ${res.body?.slice(0, 200)}`
+    );
   }
 }
 export async function finalizeWatch(
