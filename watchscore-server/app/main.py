@@ -40,7 +40,7 @@ load_dotenv(ROOT / ".env")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Use a VISION-CAPABLE model by default
-AI_MODEL = "gpt-5"
+AI_MODEL = "gpt-4.1"
 
 client: Optional[OpenAI] = None
 if OPENAI_API_KEY:
@@ -528,18 +528,12 @@ async def finalize_watch_test(watch_id: int, payload: FinalizePayload):
         "openai": int((t3 - t2) * 1000),
     },
 }, flush=True)
-
     return {
         "watchId": watch_id,
         "photos": photos_out,
         "ai": result,
-        "timings_ms": {
-            "total": int((time.perf_counter() - t0) * 1000),
-            "presign": int((t1 - t0) * 1000),
-            "pre_model": int((t2 - t1) * 1000),   # building messages etc.
-            "openai": int((t3 - t2) * 1000),      # pure model latency window
-        },
     }
+
 @app.post("/watches/init")
 async def init_watch_presign(
     count: int = Body(embed=True),
@@ -579,13 +573,14 @@ async def finalize_watch(watch_id: int, payload: FinalizePayload):
     if not w:
         raise HTTPException(404, "Watch not found")
 
-    # Save keys
+    # 1) Save photo keys
     for idx, p in enumerate(payload.photos, start=1):
         key = p.get("key")
         if not key:
             continue
         await db.photo.create(data={"watchId": watch_id, "key": key, "index": idx})
 
+    # 2) (Optional) Run AI analysis
     ai_data: Dict[str, Any] = {}
     if payload.analyze and client:
         ai_t0 = time.perf_counter()
@@ -593,8 +588,8 @@ async def finalize_watch(watch_id: int, payload: FinalizePayload):
         for p in payload.photos:
             k = p.get("key")
             if k:
-                vision_urls.append(_presign_get(k, expires=60 * 30))
-        
+                vision_urls.append(_presign_get(k, expires=60 * 30))  # 30 min for model
+
         ai_t1 = time.perf_counter()
 
         if vision_urls:
@@ -603,7 +598,10 @@ async def finalize_watch(watch_id: int, payload: FinalizePayload):
                 content.append({"type": "image_url", "image_url": {"url": u}})
 
             messages = [
-                {"role": "system", "content": "Return ONLY the strict JSON that matches the schema. No extra keys, no commentary."},
+                {
+                    "role": "system",
+                    "content": "Return ONLY the strict JSON that matches the schema. No extra keys, no commentary.",
+                },
                 {"role": "user", "content": content},
             ]
 
@@ -631,22 +629,44 @@ async def finalize_watch(watch_id: int, payload: FinalizePayload):
                     await db.watch.update(where={"id": watch_id}, data=fields)
 
                 ai_t4 = time.perf_counter()
-                print({
-                    "where": "finalize_watch",
-                    "watch_id": watch_id,
-                    "presign_ms": int((ai_t1 - ai_t0) * 1000),
-                    "precheck_ms": int((ai_t2 - ai_t1) * 1000),
-                    "openai_ms": int((ai_t3 - ai_t2) * 1000),
-                    "db_ms": int((ai_t4 - ai_t3) * 1000),
-                })
+                print(
+                    {
+                        "where": "finalize_watch",
+                        "watch_id": watch_id,
+                        "presign_ms": int((ai_t1 - ai_t0) * 1000),
+                        "precheck_ms": int((ai_t2 - ai_t1) * 1000),
+                        "openai_ms": int((ai_t3 - ai_t2) * 1000),
+                        "db_ms": int((ai_t4 - ai_t3) * 1000),
+                    }
+                )
             except Exception as e:
                 print("[AI finalize_watch] error:", e)
 
+    # 3) Load full record and serialize
     full = await db.watch.find_unique(
         where={"id": watch_id},
         include={"photos": True, "analysis": True},
     )
-    return _serialize_watch(full)
+    out = _serialize_watch(full)
+
+    # 4) ✅ Attach short-lived, ready-to-use signed URLs for the client UI
+    signed: List[Dict[str, Any]] = []
+    for p in out.get("photos", []):
+        key = p.get("key")
+        if key:
+            try:
+                p_url = _presign_get(key, expires=60 * 20)  # 5 minutes for client
+                signed.append({**p, "url": p_url})
+            except Exception as e:
+                # If presign fails, still return the record without url
+                print("[finalize_watch] presign failed:", key, e)
+                signed.append(p)
+        else:
+            signed.append(p)
+    out["photos"] = signed
+
+    return out
+
 @app.post("/watches")
 async def create_watch(files: List[UploadFile] = File(...)):
     if not files:

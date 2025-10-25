@@ -95,6 +95,7 @@ export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   // three slots; null = empty (show gallery icon)
   const [slots, setSlots] = useState<Array<string | null>>([null, null, null]);
+  const localPhotos = slots.filter(Boolean) as string[];
 
   useEffect(() => {
     if (!permission?.granted) requestPermission();
@@ -234,7 +235,7 @@ export default function CameraScreen() {
     // ensure dir exists
     await FileSystem.makeDirectoryAsync(sessionDir, {
       intermediates: true,
-    }).catch(() => {});
+    }).catch(() => { });
     const ext = uri.split(".").pop() || "jpg";
     const dest = `${sessionDir}/photo_${idx + 1}.${ext}`;
     try {
@@ -265,7 +266,7 @@ export default function CameraScreen() {
     if (baseDir) {
       const dir = `${baseDir}sessions/${sessionId}`;
       await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(
-        () => {}
+        () => { }
       );
       const out: string[] = Array(3).fill("");
 
@@ -531,11 +532,18 @@ export default function CameraScreen() {
                   uploads.map((u) => u.key),
                   true
                 );
-                // 5) Navigate
+                const dataParam = encodeURIComponent(JSON.stringify({ payload: result}));
+
                 router.push({
                   pathname: "/feed/watch-details",
-                  params: { watchId: String(result.id ?? watchId) },
+                  params: { data:dataParam },
                 });
+                //console.log(result)
+                // 5) Navigate
+                //router.push({
+                //  pathname: "/feed/watch-details",
+                //  params: { watchId: String(result.id ?? watchId) },
+                //});
               } catch (e: any) {
                 console.warn("direct S3 flow failed:", e?.message || e);
               }
@@ -568,7 +576,7 @@ export default function CameraScreen() {
                 tintColor: "#FFFFFF",
                 transform: [{ rotate: "180deg" }],
               }}
-              //resizeMode="contain"
+            //resizeMode="contain"
             />
           </Pressable>
         )}
