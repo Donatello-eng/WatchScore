@@ -6,6 +6,7 @@ import {
   Image,
   Pressable,
   StatusBar,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -22,7 +23,12 @@ export default function UploadPhotos() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar
+        barStyle="dark-content"
+        translucent
+        backgroundColor="transparent"
+      />
+
       <LinearGradient
         colors={["#FFFFFF", "#FCF6EC", "#F4DDE0", "#E1C7E6"]}
         start={{ x: 0.5, y: 0 }}
@@ -30,9 +36,16 @@ export default function UploadPhotos() {
         style={StyleSheet.absoluteFill}
       />
 
+      {/* Only left/right edges; we control top/bottom padding explicitly */}
       <SafeAreaView
-        style={styles.safe}
-        edges={["top", "left", "right", "bottom"]}
+        style={[
+          styles.safe,
+          {
+            paddingTop: insets.top, // prevents “push down” after mount
+            paddingBottom: insets.bottom, // keeps bottom button stable too
+          },
+        ]}
+        edges={["left", "right"]}
       >
         {/* Back chevron */}
         <Pressable
@@ -89,10 +102,7 @@ export default function UploadPhotos() {
           >
             <Image
               source={require("../../assets/images/caseback.webp")}
-              style={{
-                width: "100%",
-                height: "100%",
-              }}
+              style={{ width: "100%", height: "100%" }}
               resizeMode="contain"
             />
           </View>
@@ -117,7 +127,6 @@ export default function UploadPhotos() {
         </View>
 
         {/* Begin button */}
-
         <Pressable
           onPress={() => router.push("/feed/camera")}
           style={({ pressed }) => [

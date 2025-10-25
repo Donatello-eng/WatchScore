@@ -22,11 +22,16 @@ export default function ScanHistory() {
   const { scale, vw, vh } = useR();
   const [active, setActive] = React.useState<"camera" | "collection">(
     "collection"
-  ); // default active
+  );
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar
+        barStyle="dark-content"
+        translucent
+        backgroundColor="transparent"
+      />
+
       {/* background gradient */}
       <LinearGradient
         colors={["#FFFFFF", "#F3F1F1", "#F3DCDD", "#E1C7E6"]}
@@ -35,8 +40,17 @@ export default function ScanHistory() {
         style={StyleSheet.absoluteFill}
       />
 
-      {/* content inside safe areas */}
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      {/* Only left/right edges; we control top/bottom padding explicitly to avoid first-frame jump */}
+      <SafeAreaView
+        style={[
+          styles.safe,
+          {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          },
+        ]}
+        edges={["left", "right"]}
+      >
         {/* Title */}
         <Text
           style={[
@@ -88,7 +102,7 @@ export default function ScanHistory() {
             styles.ooops,
             {
               fontSize: scale(16),
-              marginTop: vh(0), // spacing from the illustration
+              marginTop: vh(0),
             },
           ]}
         >
@@ -161,19 +175,17 @@ export default function ScanHistory() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
   safe: {
     flex: 1,
     alignItems: "center",
-    // if you want a bit of breathing room above the title, tweak here:
-    paddingTop: 0,
-    paddingBottom: 0,
+    // paddingTop/paddingBottom are injected via insets so the first frame is correct
   },
 
   title: {
     color: "#525252",
     letterSpacing: 0.3,
-    // Fine-tune this if your mock has extra space
-    marginTop: 20,
+    marginTop: 20, // adjust if you want more/less breathing room above title
   },
 
   illustration: {
@@ -188,10 +200,7 @@ const styles = StyleSheet.create({
     color: "#686868",
     fontFamily: Font.inter.semiBold,
     textAlign: "center",
-    alignSelf: "center", // centers the block itself
-  },
-  emptyText: {
-    color: "#8C8C96",
+    alignSelf: "center",
   },
 
   navPill: {
@@ -206,31 +215,28 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
 
-  /* New: vertical button layout */
   navItem: {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 8,
     paddingHorizontal: 26,
-    gap: 0, // space between icon and label
+    gap: 0,
   },
 
-  /* New: active “chip” on the right */
   navItemActive: {
     backgroundColor: "rgba(255,255,255,0.5)",
     borderRadius: 100,
   },
 
-  /* New: labels */
   navItemLabel: {
-    color: "#2B2B2B", // dark for inactive Camera
+    color: "#2B2B2B",
     textAlign: "center",
     fontFamily: Font.inter.semiBold,
     fontSize: 11,
   },
 
   navItemLabelActive: {
-    color: "#4456A6", // blue-ish like your screenshot
+    color: "#4456A6",
   },
 });
