@@ -128,7 +128,7 @@ const Welcome: React.FC<Props> = ({
             {
               width: R.vw(28),
               aspectRatio: 1,
-              right: -R.vw(5),
+              right: -R.vw(2),
               bottom: R.vh(40),
               transform: [{ rotate: "19.75deg" }],
             },
@@ -154,13 +154,27 @@ const Welcome: React.FC<Props> = ({
             <Text style={styles.ctaText}>Get started</Text>
           </Pressable>
 
-          <View style={styles.legalRow}>
-            <Text onPress={handleOpenTerms} style={styles.legalLink}>
-              Terms of Use
+          <View style={styles.legalColumn}>
+            <Text style={styles.legalIntro}>
+              By continuing you're accepting our
             </Text>
-            <Text style={styles.legalAnd}> and </Text>
-            <Text onPress={handleOpenPrivacy} style={styles.legalLink}>
-              Privacy Notice
+
+            <Text style={styles.legalLine}>
+              <Text
+                onPress={handleOpenTerms}
+                style={styles.legalLink}
+                accessibilityRole="link"
+              >
+                Terms of Use
+              </Text>
+              <Text style={styles.legalAnd}> and </Text>
+              <Text
+                onPress={handleOpenPrivacy}
+                style={styles.legalLink}
+                accessibilityRole="link"
+              >
+                Privacy Notice
+              </Text>
             </Text>
           </View>
         </View>
@@ -230,20 +244,39 @@ const styles = StyleSheet.create({
     fontFamily: Font.inter.bold, // "Inter_700Bold"
     letterSpacing: 0.25,
   },
-  legalRow: {
-    flexDirection: "row",
+  legalColumn: {
+    flexDirection: "column",
     marginTop: 16,
-    alignItems: "center",
+    alignItems: "center", // use 'flex-start' if you want left-aligned
   },
+
+  legalIntro: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#5b5b5bff",
+    textAlign: "center",
+    fontFamily: Font.inter.regular,
+  },
+
+  // formerly "legalRow"
+  legalLine: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#5b5b5bff",
+    textAlign: "center",
+  },
+
   legalLink: {
-    color: "#3D3D3D",
+    color: "#000000ff",
     fontSize: 12,
     fontFamily: Font.inter.regular,
   },
+
   legalAnd: {
-    fontFamily: Font.inter.light,
+    color: "#666",
     marginHorizontal: 6,
-    color: "#8F8F8F",
     fontSize: 12,
+    fontFamily: Font.inter.light,
   },
 });
