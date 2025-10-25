@@ -2,7 +2,7 @@ import * as FileSystem from "expo-file-system/legacy";
 
 // For emulator: http://10.0.2.2:8000
 // For real device: your ngrok HTTPS URL
-const API_BASE = "http://10.0.2.2:8000";
+const API_BASE = "http://0.0.0.0:8000";
 
 type PresignItem = {
   key: string;
