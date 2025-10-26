@@ -16,6 +16,7 @@ import {
 import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
 import { router } from "expo-router";
+import { triggerHaptic } from "../../hooks/haptics";
 
 export default function ScanHistory() {
   const insets = useSafeAreaInsets();
@@ -77,13 +78,20 @@ export default function ScanHistory() {
 
           {/* Right image button */}
           <Pressable
-            onPress={() => router.push("/components/support")}
+            onPress={() => {
+              triggerHaptic("impactMedium");
+              router.push("/components/support");
+            }}
             hitSlop={scale(8)}
             style={styles.supportBtn}
           >
             <Image
               source={require("../../assets/images/info.webp")}
-              style={{ width: supportIconSize, height: supportIconSize, tintColor: "#525252" }}
+              style={{
+                width: supportIconSize,
+                height: supportIconSize,
+                tintColor: "#525252",
+              }}
               resizeMode="contain"
             />
           </Pressable>
@@ -150,6 +158,7 @@ export default function ScanHistory() {
         {/* Camera */}
         <Pressable
           onPress={() => {
+            triggerHaptic("impactMedium");
             setActive("camera");
             router.push("/feed/uploadphotos");
           }}
@@ -173,7 +182,10 @@ export default function ScanHistory() {
 
         {/* Collection */}
         <Pressable
-          onPress={() => setActive("collection")}
+          onPress={() => {
+            triggerHaptic("impactMedium");
+            setActive("collection");
+          }}
           style={[
             styles.navItem,
             { paddingHorizontal: 15 },

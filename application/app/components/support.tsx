@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useR } from "../../hooks/useR";
 import { LinearGradient } from "expo-linear-gradient";
+import { triggerHaptic } from "../../hooks/haptics";
 
 // Replace with your actual UI theme colors
 const UI = {
@@ -61,7 +62,10 @@ export default function SupportScreen() {
         style={StyleSheet.absoluteFill}
       />
       <Pressable
-        onPress={() => router.back()}
+        onPress={() => {
+          triggerHaptic("impactMedium");
+          router.back();
+        }}
         style={[styles.back, backPos]}
         hitSlop={scale(10)}
       >
@@ -76,7 +80,10 @@ export default function SupportScreen() {
 
           <TouchableOpacity
             style={[styles.button, buttonSizing]}
-            onPress={handleEmailPress}
+            onPress={() => {
+              triggerHaptic("impactMedium");
+              handleEmailPress();
+            }}
           >
             <Text
               style={[styles.buttonText, buttonTextSizing]}
@@ -88,7 +95,10 @@ export default function SupportScreen() {
 
           <TouchableOpacity
             style={[styles.button, buttonSizing]}
-            onPress={handleWebsitePress}
+            onPress={() => {
+              triggerHaptic("impactMedium");
+              handleWebsitePress();
+            }}
           >
             <Text
               style={[styles.buttonText, buttonTextSizing]}

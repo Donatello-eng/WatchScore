@@ -29,6 +29,7 @@ import {
 
 import * as ImageManipulator from "expo-image-manipulator";
 import { Platform } from "react-native";
+import { triggerHaptic } from "../../hooks/haptics";
 
 const MAX_EDGE = 1600;
 const WEBP_QUALITY = 0.75;
@@ -235,7 +236,7 @@ export default function CameraScreen() {
     // ensure dir exists
     await FileSystem.makeDirectoryAsync(sessionDir, {
       intermediates: true,
-    }).catch(() => { });
+    }).catch(() => {});
     const ext = uri.split(".").pop() || "jpg";
     const dest = `${sessionDir}/photo_${idx + 1}.${ext}`;
     try {
@@ -266,7 +267,7 @@ export default function CameraScreen() {
     if (baseDir) {
       const dir = `${baseDir}sessions/${sessionId}`;
       await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(
-        () => { }
+        () => {}
       );
       const out: string[] = Array(3).fill("");
 
@@ -305,7 +306,10 @@ export default function CameraScreen() {
       <SafeAreaView style={RNStyleSheet.absoluteFill} pointerEvents="box-none">
         <Pressable
           hitSlop={12}
-          onPress={() => router.back()}
+          onPress={() => {
+            triggerHaptic("impactMedium");
+            router.back();
+          }}
           style={styles.backBtn}
         >
           <Image
@@ -413,7 +417,10 @@ export default function CameraScreen() {
 
               {uri && (
                 <Pressable
-                  onPress={() => removeSlot(idx)}
+                  onPress={() => {
+                    triggerHaptic("impactMedium");
+                    removeSlot(idx);
+                  }}
                   style={{
                     position: "absolute",
                     top: -scale(6),
@@ -455,7 +462,10 @@ export default function CameraScreen() {
           >
             {/* left: Gallery */}
             <Pressable
-              onPress={pickFromGallery}
+              onPress={() => {
+                triggerHaptic("impactMedium");
+                pickFromGallery();
+              }}
               style={{
                 position: "absolute",
                 left: scale(48),
@@ -500,6 +510,7 @@ export default function CameraScreen() {
           // Solid green "Continue" pill
           <Pressable
             onPress={async () => {
+              triggerHaptic("impactMedium");
               try {
                 const imgs = (slots.filter(Boolean) as string[]).slice(0, 3);
                 if (imgs.length === 0) return;
@@ -532,11 +543,13 @@ export default function CameraScreen() {
                   uploads.map((u) => u.key),
                   true
                 );
-                const dataParam = encodeURIComponent(JSON.stringify({ payload: result}));
+                const dataParam = encodeURIComponent(
+                  JSON.stringify({ payload: result })
+                );
 
                 router.push({
                   pathname: "/feed/watch-details",
-                  params: { data:dataParam },
+                  params: { data: dataParam },
                 });
                 //console.log(result)
                 // 5) Navigate
@@ -576,7 +589,7 @@ export default function CameraScreen() {
                 tintColor: "#FFFFFF",
                 transform: [{ rotate: "180deg" }],
               }}
-            //resizeMode="contain"
+              //resizeMode="contain"
             />
           </Pressable>
         )}

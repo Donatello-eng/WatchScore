@@ -16,6 +16,7 @@ import {
 import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
 import { router } from "expo-router";
+import { triggerHaptic } from "../../hooks/haptics";
 
 export default function UploadPhotos() {
   const insets = useSafeAreaInsets();
@@ -50,7 +51,10 @@ export default function UploadPhotos() {
         {/* Back chevron */}
         <Pressable
           hitSlop={12}
-          onPress={() => router.back()}
+          onPress={() => {
+            triggerHaptic("impactMedium");
+            router.back();
+          }}
           style={styles.backBtn}
         >
           <Image
@@ -126,7 +130,10 @@ export default function UploadPhotos() {
 
         {/* Begin button */}
         <Pressable
-          onPress={() => router.push("/feed/camera")}
+          onPress={() => {
+            triggerHaptic("impactMedium");
+            router.push("/feed/camera");
+          }}
           style={({ pressed }) => [
             styles.beginBtn,
             pressed && { transform: [{ scale: 0.98 }] },

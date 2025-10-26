@@ -19,13 +19,21 @@ import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
 //import data from "../../hooks/data.json"; // <- your JSON
 import { LinearGradient } from "expo-linear-gradient";
-import MovementQualityCard, { MovementQualityDTO } from "../../src/components/watch-details/MovementQualityCard";
-import ValueMoneyCard, { ValueMoneyDTO } from "../../src/components/watch-details/ValueMoneyCard";
+import MovementQualityCard, {
+  MovementQualityDTO,
+} from "../../src/components/watch-details/MovementQualityCard";
+import ValueMoneyCard, {
+  ValueMoneyDTO,
+} from "../../src/components/watch-details/ValueMoneyCard";
 import OverallScoreCard from "../../src/components/watch-details/OvarallCard";
 import WatchCard from "../../src/components/watch-details/WatchCard";
-import MaterialsAndBuildCard, { MaterialsBuildDTO } from "../../src/components/watch-details/MaterialsAndBuildCard";
+import MaterialsAndBuildCard, {
+  MaterialsBuildDTO,
+} from "../../src/components/watch-details/MaterialsAndBuildCard";
 import AlternativesCard from "../../src/components/watch-details/AlternativesCard";
-import MaintenanceAndRisksCard, { MaintenanceRisksDTO } from "../../src/components/watch-details/MentenanceAndRisksCard";
+import MaintenanceAndRisksCard, {
+  MaintenanceRisksDTO,
+} from "../../src/components/watch-details/MentenanceAndRisksCard";
 import { toWatchCardDTO } from "@/dto/toWatchCardDTO";
 import { toMovementQualityDTO } from "@/dto/toMovementQualityDTO";
 import { toOverallScoreDTO } from "@/dto/toOverallScoreDTO";
@@ -34,24 +42,28 @@ import { toMaintenanceRisksDTO } from "@/dto/toMaintenanceRisksDTO";
 import { toValueMoneyDTO } from "@/dto/toValueMoneyDTO";
 import { toAlternativesDTO } from "@/dto/toAlternativesDTO";
 import { ServerWatch } from "@/types/watch";
-
-
+import { triggerHaptic } from "../../hooks/haptics";
 
 function decodeJsonParam<T = unknown>(v?: string | string[] | null): T | null {
   const raw = Array.isArray(v) ? v[0] : v;
   if (!raw) return null;
-  try { return JSON.parse(decodeURIComponent(raw)) as T; } catch { return null; }
+  try {
+    return JSON.parse(decodeURIComponent(raw)) as T;
+  } catch {
+    return null;
+  }
 }
 
-
 type Packed = { payload: ServerWatch };
-
 
 export default function WatchDetails() {
   const insets = useSafeAreaInsets();
   const { scale, vw, vh } = useR();
   const { data: packedData } = useLocalSearchParams<{ data?: string }>();
-  const packed = useMemo(() => decodeJsonParam<Packed>(packedData), [packedData]);
+  const packed = useMemo(
+    () => decodeJsonParam<Packed>(packedData),
+    [packedData]
+  );
   const data = packed?.payload ?? null;
 
   if (!data) return null;
@@ -91,7 +103,10 @@ export default function WatchDetails() {
         {/* Back */}
         <Pressable
           hitSlop={12}
-          onPress={() => router.push("/feed/history")}
+          onPress={() => {
+            triggerHaptic("impactMedium");
+            router.push("/feed/history");
+          }}
           style={styles.backBtn}
         >
           <Image
@@ -104,11 +119,7 @@ export default function WatchDetails() {
           contentContainerStyle={{ paddingBottom: insets.bottom + vh(2) }}
           showsVerticalScrollIndicator={false}
         >
-          <WatchCard
-            {...dto}
-            vw={vw}
-            scale={scale}
-          />
+          <WatchCard {...dto} vw={vw} scale={scale} />
 
           <OverallScoreCard
             score={overall.score}
@@ -118,36 +129,15 @@ export default function WatchDetails() {
             scale={scale}
           />
 
-          <MovementQualityCard
-            {...movementDTO}
-            vw={vw}
-            scale={scale}
-          />
+          <MovementQualityCard {...movementDTO} vw={vw} scale={scale} />
 
-          <MaterialsAndBuildCard
-            {...matDTO}
-            vw={vw}
-            scale={scale}
-          />
+          <MaterialsAndBuildCard {...matDTO} vw={vw} scale={scale} />
 
-          <MaintenanceAndRisksCard
-            dto={maintDTO}
-            vw={vw}
-            scale={scale}
-          />
+          <MaintenanceAndRisksCard dto={maintDTO} vw={vw} scale={scale} />
 
-          <ValueMoneyCard
-            dto={valueDTO}
-            vw={vw}
-            scale={scale}
-          />
+          <ValueMoneyCard dto={valueDTO} vw={vw} scale={scale} />
 
-          <AlternativesCard
-            dto={altDTO}
-            vw={vw}
-            scale={scale}
-          />
-
+          <AlternativesCard dto={altDTO} vw={vw} scale={scale} />
         </ScrollView>
       </SafeAreaView>
     </View>

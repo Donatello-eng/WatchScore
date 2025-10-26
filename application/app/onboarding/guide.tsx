@@ -21,6 +21,7 @@ import { Font } from "../../hooks/fonts";
 import { useR } from "../../hooks/useR";
 import { Dots } from "../../ui/dots";
 import { guideSlides } from "../../hooks/guideSlidesData";
+import { triggerHaptic } from "../../hooks/haptics";
 
 /** ---------- Helpers ---------- **/
 
@@ -226,7 +227,10 @@ export default function Guide() {
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={goBack}
+          onPress={() => {
+            triggerHaptic("impactMedium");
+            goBack();
+          }}
           style={styles.backBtn}
         >
           <Image
@@ -289,7 +293,10 @@ export default function Guide() {
         }}
       >
         <Pressable
-          onPress={goNext}
+          onPress={() => {
+            triggerHaptic("impactMedium");
+            goNext();
+          }}
           style={({ pressed }) => [
             styles.cta,
             pressed && { transform: [{ scale: 0.98 }] },

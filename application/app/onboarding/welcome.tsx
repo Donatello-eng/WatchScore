@@ -17,6 +17,7 @@ import { Image } from "expo-image";
 import { useWindowDimensions, PixelRatio } from "react-native";
 import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
+import { triggerHaptic } from "../../hooks/haptics";
 
 type Props = {
   onGetStarted?: () => void;
@@ -145,7 +146,10 @@ const Welcome: React.FC<Props> = ({
         {/* CTA */}
         <View style={styles.ctaWrap}>
           <Pressable
-            onPress={handleGetStarted}
+            onPress={() => {
+              triggerHaptic("impactMedium");
+              handleGetStarted();
+            }}
             style={({ pressed }) => [
               styles.ctaButton,
               pressed && { transform: [{ scale: 0.98 }] },
@@ -161,7 +165,10 @@ const Welcome: React.FC<Props> = ({
 
             <Text style={styles.legalLine}>
               <Text
-                onPress={handleOpenTerms}
+                onPress={() => {
+                  triggerHaptic("impactMedium");
+                  handleOpenTerms();
+                }}
                 style={styles.legalLink}
                 accessibilityRole="link"
               >
@@ -169,7 +176,10 @@ const Welcome: React.FC<Props> = ({
               </Text>
               <Text style={styles.legalAnd}> and </Text>
               <Text
-                onPress={handleOpenPrivacy}
+                onPress={() => {
+                  triggerHaptic("impactMedium");
+                  handleOpenPrivacy();
+                }}
                 style={styles.legalLink}
                 accessibilityRole="link"
               >
