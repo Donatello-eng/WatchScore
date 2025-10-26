@@ -28,8 +28,7 @@ import {
 } from "../../src/api/directS3";
 
 import * as ImageManipulator from "expo-image-manipulator";
-import { Platform } from "react-native";
-import { triggerHaptic } from "../../hooks/haptics";
+import { triggerHaptic } from "hooks/haptics";
 
 const MAX_EDGE = 1600;
 const WEBP_QUALITY = 0.75;
@@ -536,20 +535,27 @@ export default function CameraScreen() {
                     uploads[i].headers
                   );
                 }
+                /*
+                                // 4) Finalize (save keys, run AI)
+                                const result = await finalizeWatch(
+                                  watchId,
+                                  uploads.map((u) => u.key),
+                                  true
+                                );
+                                const dataParam = encodeURIComponent(JSON.stringify({ payload: result }));
+                
+                                router.push({
+                                  pathname: "/feed/watch-details",
+                                  params: { data: dataParam },
+                                });
+                */
 
-                // 4) Finalize (save keys, run AI)
-                const result = await finalizeWatch(
-                  watchId,
-                  uploads.map((u) => u.key),
-                  true
-                );
-                const dataParam = encodeURIComponent(
-                  JSON.stringify({ payload: result })
-                );
+                await finalizeWatch(watchId, uploads.map(u => u.key), /* analyze */ false);
 
+                // 2) Route with just the id
                 router.push({
                   pathname: "/feed/watch-details",
-                  params: { data: dataParam },
+                  params: { id: String(watchId) },
                 });
                 //console.log(result)
                 // 5) Navigate

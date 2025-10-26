@@ -54,4 +54,4 @@ yarn-error.*
 !.vscode/extensions.json
 
 # JetBrains (optional)
-.idea/
+.idea/l

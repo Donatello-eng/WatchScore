@@ -32,6 +32,9 @@ except Exception:  # boto3 optional
     Config = None  # type: ignore
     BotoCoreError = NoCredentialsError = Exception  # type: ignore
 
+from fastapi.responses import StreamingResponse
+import itertools
+
 # -----------------------------------------------------------------------------
 # Env & setup
 # -----------------------------------------------------------------------------
@@ -403,137 +406,6 @@ async def _gpt_json(
 # Routes (watches-first, no sessions)
 # -----------------------------------------------------------------------------
 # --- ADD: test init endpoint (clone of /watches/init but at a different path) ---
-@app.post("/watches-test/init")
-async def init_watch_presign_test(
-    count: int = Body(embed=True),
-    contentTypes: Optional[List[str]] = Body(default=None, embed=True),
-):
-    if count < 1 or count > 3:
-        raise HTTPException(400, "count must be 1..3")
-    if not (S3_ENABLED and s3 and AWS_S3_BUCKET):
-        raise HTTPException(500, "S3 not configured")
-
-    watch = await db.watch.create(data={})
-    items = []
-
-    for i in range(count):
-        ct = (contentTypes[i] if contentTypes and i < len(contentTypes) else "image/jpeg")
-        ext = _guess_ext(None, ct)
-        key = f"watches/{watch.id}/photo_{i+1}_{uuid.uuid4().hex}{ext}"
-
-        upload_url = _presign_put(key, ct, expires=15 * 60)
-        headers = {"Content-Type": ct}
-        if S3_REQUIRE_SSE == "aws:kms":
-            headers["x-amz-server-side-encryption"] = "aws:kms"
-            if S3_KMS_KEY_ID:
-                headers["x-amz-server-side-encryption-aws-kms-key-id"] = S3_KMS_KEY_ID
-        else:
-            headers["x-amz-server-side-encryption"] = "AES256"
-
-        items.append({"key": key, "uploadUrl": upload_url, "headers": headers})
-
-        print("[presign-test]", {"bucket": AWS_S3_BUCKET, "region": AWS_REGION, "key": key, "ct": ct})
-
-    return {"watchId": watch.id, "uploads": items}
-
-@app.post("/watches-test/{watch_id}/finalize")
-async def finalize_watch_test(watch_id: int, payload: FinalizePayload):
-    """
-    Minimal analysis path to isolate OpenAI latency:
-    - same S3 presign + photo storage as normal
-    - tiny prompt + tiny JSON
-    - returns timing breakdown
-    """
-    w = await db.watch.find_unique(where={"id": watch_id})
-    if not w:
-        raise HTTPException(404, "Watch not found")
-
-    # Save photo keys (same as normal)
-    for idx, p in enumerate(payload.photos, start=1):
-        key = p.get("key")
-        if not key:
-            continue
-        await db.photo.create(data={"watchId": watch_id, "key": key, "index": idx})
-
-    result: Dict[str, Any] = {"is_watch": False, "confidence": 0.0, "notes": ""}
-
-    t0 = time.perf_counter()
-
-    if payload.analyze and client:
-        # Presign the exact same way (so S3 cost is comparable)
-        vision_urls: List[str] = []
-        for p in payload.photos:
-            k = p.get("key")
-            if k:
-                vision_urls.append(_presign_get(k, expires=60 * 30))
-        t1 = time.perf_counter()
-
-        if vision_urls:
-            content: List[Dict[str, Any]] = [{"type": "text", "text": build_is_watch_prompt()}]
-            # Use 'detail': 'low' to further minimize cost/latency variance
-            for u in vision_urls:
-                content.append({"type": "image_url", "image_url": {"url": u, "detail": "low"}})
-
-            messages = [
-                {"role": "system", "content": "Return ONLY the tiny JSON. No extra keys. No commentary."},
-                {"role": "user", "content": content},
-            ]
-
-            kwargs: Dict[str, Any] = {
-                "model": AI_MODEL,  # keep your current model to make the comparison apples-to-apples
-                "messages": messages,
-                "response_format": {"type": "json_object"},
-            }
-
-            # Optional: slight temp for vision if you're on older 4o variants
-            if AI_MODEL in {"gpt-4o-mini", "gpt-4o", "gpt-4.1"}:
-                kwargs["temperature"] = 0.0  # type: ignore
-
-            t2 = time.perf_counter()
-            try:
-                resp = client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
-                ai_text = (resp.choices[0].message.content or "{}").strip()
-                parsed = json.loads(ai_text)
-                # Defensive parse with defaults
-                result["is_watch"] = bool(parsed.get("is_watch", False))
-                result["confidence"] = float(parsed.get("confidence", 0.0))
-                notes = parsed.get("notes")
-                result["notes"] = notes if isinstance(notes, str) else ""
-            except Exception as e:
-                print("[AI finalize_watch_test] error:", e)
-            t3 = time.perf_counter()
-        else:
-            t1 = t2 = t3 = time.perf_counter()
-    else:
-        t1 = t2 = t3 = time.perf_counter()
-
-    # Prepare presigned photo URLs for client viewing (same behavior)
-    full = await db.watch.find_unique(
-        where={"id": watch_id},
-        include={"photos": True},
-    )
-
-    photos_out = []
-    for p in (full.photos if full else []):
-        if getattr(p, "key", None):
-            photos_out.append({"key": p.key, "url": _presign_get(p.key, expires=60 * 5)})
-
-    print({
-    "where": "finalize_watch_test",
-    "watch_id": watch_id,
-    "timings_ms": {
-        "total": int((time.perf_counter() - t0) * 1000),
-        "presign": int((t1 - t0) * 1000),
-        "pre_model": int((t2 - t1) * 1000),
-        "openai": int((t3 - t2) * 1000),
-    },
-}, flush=True)
-    return {
-        "watchId": watch_id,
-        "photos": photos_out,
-        "ai": result,
-    }
-
 @app.post("/watches/init")
 async def init_watch_presign(
     count: int = Body(embed=True),
@@ -667,72 +539,181 @@ async def finalize_watch(watch_id: int, payload: FinalizePayload):
 
     return out
 
-@app.post("/watches")
-async def create_watch(files: List[UploadFile] = File(...)):
-    if not files:
-        raise HTTPException(400, "No files provided")
-    if len(files) > 3:
-        raise HTTPException(400, "Max 3 files")
+SECTION_SCHEMAS: Dict[str, str] = {
+    "overall": json.dumps({
+        "overall": {
+            "conclusion": "string",
+            "score": {"letter": "A|B|C|D", "numeric": 0}
+        }
+    }, ensure_ascii=False),
+
+    "movement_quality": json.dumps({
+        "movement_quality": {
+            "type": "string",  # automatic | manual | quartz | spring-drive
+            "accuracy": {"value": 0, "unit": "sec/day"},
+            "reliability": {"label": "very low|low|medium|high|very high"},
+            "score": {"letter": "A|B|C|D", "numeric": 0}
+        }
+    }, ensure_ascii=False),
+
+    "materials_build": json.dumps({
+        "materials_build": {
+            "total_weight": {"value": 0, "unit": "g"},
+            "case_material": {"material": "string"},
+            "crystal": {"material": "string"},
+            "build_quality": {"label": "string"},
+            "water_resistance": {"value": 0, "unit": "m"},
+            "score": {"letter": "A|B|C|D", "numeric": 0}
+        }
+    }, ensure_ascii=False),
+
+    "maintenance_risks": json.dumps({
+        "maintenance_risks": {
+            "service_interval": {"min": 0, "max": 0, "unit": "y"},
+            "service_cost": {"min": 0, "max": 0, "currency": "USD"},
+            "parts_availability": {"label": "string"},
+            "serviceability": {"raw": "string"},
+            "known_weak_points": ["string"],
+            "score": {"letter": "A|B|C|D", "numeric": 0}
+        }
+    }, ensure_ascii=False),
+
+    "value_for_money": json.dumps({
+        "value_for_money": {
+            "list_price": {"amount": 0, "currency": "USD"},
+            "resale_average": {"amount": 0, "currency": "USD"},
+            "market_liquidity": {"label": "string"},
+            "holding_value": {"label": "string", "note": "string"},
+            "value_for_wearer": {"label": "string"},
+            "value_for_collector": {"label": "string"},
+            "spec_efficiency_note": {"label": "string", "note": "string"},
+            "score": {"letter": "A|B|C|D", "numeric": 0}
+        }
+    }, ensure_ascii=False),
+
+    "alternatives": json.dumps({
+        "alternatives": [
+            {"model": "string", "movement": "string", "price": {"amount": 0, "currency": "USD"}}
+        ]
+    }, ensure_ascii=False),
+
+    "meta": json.dumps({
+        "meta": {"schema_version": "1.2.0", "units_system": "SI", "release_year": 0}
+    }, ensure_ascii=False),
+}
+
+def build_section_prompt(section: str) -> str:
+    """
+    Small, section-only prompt to keep latency predictable.
+    """
+    schema = SECTION_SCHEMAS[section]
+    return (
+        "You are a watch expert. Analyze the provided photos and return STRICT JSON for the "
+        f"**{section}** section only.\n"
+        "Return ONLY a single JSON object that matches EXACTLY this schema (no extra keys):\n"
+        f"{schema}\n"
+        "\n"
+        "Rules:\n"
+        "- All numbers must be numbers (not strings).\n"
+        "- Allowed letters for score: A,B,C,D. Numeric 0..100; letter must match the bin.\n"
+        "- If unsure, set 0 or placeholder strings as shown; do NOT omit required keys.\n"
+        "- No commentary. No Markdown. Only JSON."
+    )
+
+def sse(event: str, data: Dict[str, Any]) -> str:
+    """Format an SSE frame. `data` must be JSON-serializable."""
+    payload = json.dumps(data, ensure_ascii=False)
+    return f"event: {event}\ndata: {payload}\n\n"
+
+async def _analyze_section(section: str, vision_urls: List[str]) -> Dict[str, Any]:
+    """
+    Calls the model for a single section using the tiny schema for that section.
+    """
+    user_content: List[Dict[str, Any]] = [{"type": "text", "text": build_section_prompt(section)}]
+    for u in vision_urls:
+        user_content.append({"type": "image_url", "image_url": {"url": u}})
+
+    messages = [
+        {"role": "system", "content": "Return ONLY the strict JSON for the requested section. No extra keys."},
+        {"role": "user", "content": user_content},
+    ]
+    try:
+        result = await _gpt_json(messages, model=os.getenv("AI_MODEL", AI_MODEL))
+    except Exception as e:
+        print("[_analyze_section] error:", e)
+        result = {}
+    return result
+
+@app.get("/watches/{watch_id}/analyze-stream")
+async def analyze_stream(
+    watch_id: int,
+    parallel: bool = False,   # default to serial since you asked "can we not do it parallel?"
+    sections: Optional[str] = None,  # CSV to select subset e.g. "overall,movement_quality"
+):
+    """
+    Streams section-sized JSON chunks (SSE). Client can render cards as they arrive.
+
+    Events emitted:
+      - event: section   data: {"section":"<name>","data":{...}}
+      - event: error     data: {"message":"..."}
+      - event: done      data: {"ok": true}
+    """
     if not (S3_ENABLED and s3 and AWS_S3_BUCKET):
         raise HTTPException(500, "S3 not configured")
 
-    watch = await db.watch.create(data={})
+    # 1) Load watch + photos
+    w = await db.watch.find_unique(where={"id": watch_id}, include={"photos": True})
+    if not w:
+        raise HTTPException(404, "Watch not found")
 
-    # Upload directly to S3 and store KEYS only
-    keys = await _save_s3(files, watch.id)
-    for idx, key in enumerate(keys, start=1):
-        await db.photo.create(data={"watchId": watch.id, "key": key, "index": idx})
+    # 2) Presign for model (longer) and ensure we have at least 1 URL
+    vision_urls: List[str] = []
+    for p in w.photos:
+        if getattr(p, "key", None):
+            vision_urls.append(_presign_get(p.key, expires=60 * 30))  # 30 min for analysis
+    if not vision_urls:
+        raise HTTPException(400, "No photos available")
 
-    ai_data: Dict[str, Any] = {}
-    if client:
-        # Presign each key for vision analysis
-        vision_urls = [_presign_get(k, expires=60 * 30) for k in keys]
-        print("[vision][create_watch] presigned URLs:", vision_urls)
-        bad = [u for u in vision_urls if not _head_ok(u)]
-        if bad:
-            print("[vision][create_watch] BAD presigned URLs:", bad)
-            raise HTTPException(500, "Presigned image URL(s) are not reachable. Check AWS_REGION, bucket policy, and expiry.")
+    all_sections = ["overall", "movement_quality", "materials_build",
+                    "maintenance_risks", "value_for_money", "alternatives", "meta"]
+    wanted = [s.strip() for s in sections.split(",")] if sections else all_sections
+    wanted = [s for s in wanted if s in SECTION_SCHEMAS]  # sanitize
 
-        content: List[Dict[str, Any]] = [{"type": "text", "text": build_ai_prompt()}]
-        for u in vision_urls:
-            content.append({"type": "image_url", "image_url": {"url": u}})
+    async def event_generator():
+        # Immediately tell client we started
+        yield sse("start", {"watchId": watch_id, "sections": wanted})
 
-        messages = [
-            {"role": "system", "content": "Return ONLY the strict JSON that matches the schema. No extra keys, no commentary."},
-            {"role": "user", "content": content},
-        ]
-
-        kwargs: Dict[str, Any] = {
-            "model": AI_MODEL,
-            "messages": messages,
-            "response_format": {"type": "json_object"},
-        }
-        if AI_MODEL in {"gpt-4o-mini", "gpt-4o", "gpt-4.1"}:
-            kwargs["temperature"] = 0.2  # type: ignore
+        async def run_one(sec: str):
+            data = await _analyze_section(sec, vision_urls)
+            # enforce shape: wrap in {"section": "...", "data": {...}}
+            return {"section": sec, "data": data}
 
         try:
-            resp = client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
-            ai_text = resp.choices[0].message.content or "{}"
-            ai_data = json.loads(ai_text)
+            if parallel:
+                tasks = [asyncio.create_task(run_one(sec)) for sec in wanted]
+                for fut in asyncio.as_completed(tasks):
+                    result = await fut
+                    yield sse("section", result)
+            else:
+                for sec in wanted:
+                    yield sse("progress", {"section": sec, "status": "started"})
+                    result = await run_one(sec)
+                    yield sse("section", result)
         except Exception as e:
-            print("[AI create_watch] error:", e)
-            ai_data = {}
+            yield sse("error", {"message": str(e)})
 
-    if ai_data:
-        await db.watchanalysis.create(data={
-            "watchId": watch.id,
-            "aiJsonStr": json.dumps(ai_data, ensure_ascii=False),
-        })
-        fields = _extract_watch_fields(ai_data)
-        if fields:
-            watch = await db.watch.update(where={"id": watch.id}, data=fields)
+        yield sse("done", {"ok": True})
 
-    full = await db.watch.find_unique(
-        where={"id": watch.id},
-        include={"photos": True, "analysis": True},
+    #return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # NGINX buffering off
+        },
     )
-    return _serialize_watch(full)
-
 
 @app.get("/watches")
 async def list_watches(take: int = 20, skip: int = 0, q: Optional[str] = None):
@@ -796,82 +777,3 @@ async def admin_delete_watch(watch_id: int):
     except Exception:
         raise HTTPException(404, "Watch not found")
     return {"ok": True}
-@app.post("/watches/{watch_id}/reanalyze", dependencies=[Depends(require_admin)])
-async def reanalyze_watch(watch_id: int):
-    """
-    Requires the helper functions:
-      - build_single_image_prompt()
-      - _gpt_json(messages, model=None, max_tokens=400)
-    """
-    if not (S3_ENABLED and s3 and AWS_S3_BUCKET):
-        raise HTTPException(500, "S3 not configured")
-    if not client:
-        raise HTTPException(500, "OPENAI_API_KEY not set")
-
-    # Load photos for this watch
-    w = await db.watch.find_unique(where={"id": watch_id}, include={"photos": True})
-    if not w:
-        raise HTTPException(404, "Watch not found")
-
-    # Build presigned URLs for all photos
-    vision_urls: List[str] = []
-    for p in w.photos:
-        if getattr(p, "key", None):
-            vision_urls.append(_presign_get(p.key, expires=60 * 30))  # 30 min
-
-    if not vision_urls:
-        raise HTTPException(400, "No photos to analyze")
-
-    # --- 1) PARALLEL per-image analysis (small JSON per photo) ---
-    single_prompt = build_single_image_prompt()
-    sys_msg = {"role": "system", "content": "Return ONLY strict JSON. No extra keys. No commentary."}
-
-    async def analyze_one(url: str) -> Dict[str, Any]:
-        user_content: List[Dict[str, Any]] = [
-            {"type": "text", "text": single_prompt},
-            {"type": "image_url", "image_url": {"url": url, "detail": "low"}},
-        ]
-        msgs = [sys_msg, {"role": "user", "content": user_content}]
-        return await _gpt_json(msgs, model=os.getenv("AI_MODEL", AI_MODEL))
-
-    partials: List[Dict[str, Any]] = await asyncio.gather(*(analyze_one(u) for u in vision_urls))
-
-    # --- 2) AGGREGATE all partials into ONE strict-schema JSON ---
-    merge_instructions = (
-        "You are a watch expert. The following JSON objects are observations from multiple photos of the SAME watch. "
-        "Merge them into ONE final result that matches EXACTLY the schema below. Resolve conflicts by majority/clarity; "
-        "if still unsure use \"—\" or 0. Keep all constraints and scoring rules. Return ONLY JSON."
-    )
-    schema = build_ai_prompt()
-    merge_text = (
-        merge_instructions
-        + "\n\nPARTIALS:\n"
-        + json.dumps(partials, ensure_ascii=False)
-        + "\n\nSCHEMA:\n"
-        + schema
-    )
-
-    merge_msgs = [
-        {"role": "system", "content": "Return ONLY the strict JSON that matches the schema. No commentary."},
-        {"role": "user", "content": [{"type": "text", "text": merge_text}]},
-    ]
-    ai_data = await _gpt_json(merge_msgs, model=os.getenv("AI_MODEL", AI_MODEL), max_tokens=900)
-
-    # Persist full JSON (remove this block if you don't store aiJsonStr)
-    exists = await db.watchanalysis.find_unique(where={"watchId": watch_id})
-    if exists:
-        await db.watchanalysis.update(
-            where={"watchId": watch_id},
-            data={"aiJsonStr": json.dumps(ai_data, ensure_ascii=False)},
-        )
-    else:
-        await db.watchanalysis.create(
-            data={"watchId": watch_id, "aiJsonStr": json.dumps(ai_data, ensure_ascii=False)},
-        )
-
-    # Update core fields on Watch
-    fields = _extract_watch_fields(ai_data)
-    if fields:
-        await db.watch.update(where={"id": watch_id}, data=fields)
-
-    return {"ok": True, "watchId": watch_id, "ai": ai_data}
