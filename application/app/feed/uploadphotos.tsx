@@ -87,7 +87,6 @@ export default function UploadPhotos() {
               style={{
                 width: "100%",
                 height: "100%",
-                transform: [{ rotate: "-2deg" }],
               }}
               resizeMode="contain"
             />
@@ -111,7 +110,7 @@ export default function UploadPhotos() {
           <View
             style={[
               styles.cardWrap,
-              { width: vw(54), height: vw(54), right: vw(33), top: vh(24) },
+              { width: vw(54), height: vw(54), right: vw(37), top: vh(24) },
             ]}
           >
             <Image
@@ -119,7 +118,6 @@ export default function UploadPhotos() {
               style={{
                 width: "100%",
                 height: "100%",
-                transform: [{ rotate: "-11.45deg" }],
               }}
               resizeMode="contain"
             />
