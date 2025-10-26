@@ -24,6 +24,10 @@ export default function ScanHistory() {
     "collection"
   );
 
+  // NEW: shared sizes so header title and image align cleanly
+  const supportIconSize = scale(28);
+  const headerSideWidth = supportIconSize; // left spacer matches icon width
+
   return (
     <View style={styles.root}>
       <StatusBar
@@ -51,15 +55,39 @@ export default function ScanHistory() {
         ]}
         edges={["left", "right"]}
       >
-        {/* Title */}
-        <Text
+        {/* === HEADER ROW (title centered, support image aligned on the right) === */}
+        <View
           style={[
-            styles.title,
-            { fontSize: scale(32), fontFamily: Font.inter.extraBold },
+            styles.header,
+            { marginTop: scale(20), paddingHorizontal: vw(5) },
           ]}
         >
-          Scan History
-        </Text>
+          {/* Left spacer keeps title perfectly centered */}
+          <View style={{ width: headerSideWidth }} />
+
+          <Text
+            style={[
+              styles.title,
+              { fontSize: scale(32), fontFamily: Font.inter.extraBold },
+            ]}
+            numberOfLines={1}
+          >
+            Scan History
+          </Text>
+
+          {/* Right image button */}
+          <Pressable
+            onPress={() => router.push("/components/support")}
+            hitSlop={scale(8)}
+            style={styles.supportBtn}
+          >
+            <Image
+              source={require("../../assets/images/info.webp")}
+              style={{ width: supportIconSize, height: supportIconSize, tintColor: "#525252" }}
+              resizeMode="contain"
+            />
+          </Pressable>
+        </View>
 
         {/* Illustration area (hands are images) */}
         <View
@@ -182,10 +210,26 @@ const styles = StyleSheet.create({
     // paddingTop/paddingBottom are injected via insets so the first frame is correct
   },
 
+  // NEW: header row with centered title
+  header: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between", // spacer | title | button
+  },
+
+  // support button now participates in the row layout (no absolute positioning)
+  supportBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   title: {
     color: "#525252",
     letterSpacing: 0.3,
-    marginTop: 20, // adjust if you want more/less breathing room above title
+    // marginTop removed; header handles spacing
+    textAlign: "center",
+    flexShrink: 1, // avoid overflow on small screens
   },
 
   illustration: {
