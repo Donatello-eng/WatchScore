@@ -1,4 +1,5 @@
-import { ServerWatch } from "@/types/watch";
+// dto/materialsBuild.ts
+import { WatchAI } from "@/types/watch";
 
 export type MaterialsBuildDTO = {
   scoreNumeric: number;
@@ -7,24 +8,34 @@ export type MaterialsBuildDTO = {
   totalWeightUnit?: string;
   caseMaterial?: string;
   crystalMaterial?: string;
-  crystalCoating?: string;
+  crystalCoating?: string;   // optional fallback if older JSON provides it
   buildQuality?: string;
   waterResValue: number | null;
   waterResUnit?: string;
 };
 
-export function toMaterialsBuildDTO(w: ServerWatch): MaterialsBuildDTO {
-  const mb = (w.ai as any)?.materials_build ?? {};
+const num = (v: unknown) =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+
+export function toMaterialsBuildDTO(ai?: WatchAI): MaterialsBuildDTO {
+  const mb = ai?.materials_build as any;
+
   return {
     scoreNumeric: mb?.score?.numeric ?? 0,
     scoreLetter: mb?.score?.letter ?? "-",
-    totalWeightValue: typeof mb?.total_weight?.value === "number" ? mb.total_weight.value : null,
+
+    totalWeightValue: num(mb?.total_weight?.value),
     totalWeightUnit: mb?.total_weight?.unit,
-    caseMaterial: mb?.case_material?.raw ?? mb?.case_material?.material,
+
+    // prefer structured field; fall back to older ".raw" if it exists
+    caseMaterial: mb?.case_material?.material ?? mb?.case_material?.raw,
+
     crystalMaterial: mb?.crystal?.material,
-    crystalCoating: mb?.crystal?.coating,
+    crystalCoating: mb?.crystal?.coating, // not in current schema, kept as soft fallback
+
     buildQuality: mb?.build_quality?.label,
-    waterResValue: typeof mb?.water_resistance?.value === "number" ? mb.water_resistance.value : null,
+
+    waterResValue: num(mb?.water_resistance?.value),
     waterResUnit: mb?.water_resistance?.unit,
   };
 }

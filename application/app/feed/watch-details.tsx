@@ -33,7 +33,7 @@ import { toMaterialsBuildDTO } from "@/dto/toMaterialsBuildDTO";
 import { toMaintenanceRisksDTO } from "@/dto/toMaintenanceRisksDTO";
 import { toValueMoneyDTO } from "@/dto/toValueMoneyDTO";
 import { toAlternativesDTO } from "@/dto/toAlternativesDTO";
-import { ServerWatch } from "@/types/watch";
+import { ServerWatch, WatchAI } from "@/types/watch";
 
 const API_BASE =
   Platform.OS === "android"
@@ -50,7 +50,7 @@ function decodeJsonParam<T = unknown>(v?: string | string[] | null): T | null {
   }
 }
 
-type Packed = { payload: ServerWatch };
+type Packed = { payload: { record: ServerWatch; ai: Partial<WatchAI> } };
 
 type SSEFrame = { event?: string; data?: any };
 
@@ -141,56 +141,87 @@ export default function WatchDetails() {
   // Accept BOTH `id` and packed `data`
   const { id: idParam, data: packedData } = useLocalSearchParams<{ id?: string; data?: string }>();
 
+  const packed = useMemo(() => decodeJsonParam<{ payload: { record: ServerWatch; ai: Partial<WatchAI> } }>(packedData), [packedData]);
+
   const [record, setRecord] = useState<ServerWatch | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
+  const [ai, setAi] = useState<Partial<WatchAI>>({});
 
   // Decode packed JSON (safe to call every render)
-  const packed = useMemo(() => decodeJsonParam<Packed>(packedData), [packedData]);
 
   const sseStartedRef = useRef(false);
-  const lastIdRef = useRef<number | undefined>(undefined);
+
+  // was: lastIdRef; we now key by id + sections
+  const lastRunKeyRef = useRef<string | undefined>(undefined);
+
+  const requestedSectionsRef = useRef<Set<string>>(new Set());
+
+
+  const ALL_SECTIONS = ["quick_facts", "overall", "movement_quality", "materials_build", "maintenance_risks", "value_for_money", "alternatives"];
+
+  function isFilled(v: any) { return v && typeof v === "object" && Object.keys(v).length > 0; }
+
+
+
+  const missingSections = useMemo(() => {
+    const ms = ALL_SECTIONS.filter(s => !isFilled((ai as any)[s]));
+    if (ms.includes("quick_facts")) return ["quick_facts", ...ms.filter(s => s !== "quick_facts")];
+    if (ms.includes("overall")) return ["overall", ...ms.filter(s => s !== "overall")];
+    return ms;
+  }, [ai]);
 
 
   useEffect(() => {
     if (!record?.id) return;
-    if (record.ai) return;            // ok to guard, just don't put it in deps
-    if (sseStartedRef.current && lastIdRef.current === record.id) return;
+
+    if (missingSections.length === 0) return;
+
+    const runKey = `${record.id}:${missingSections.join(",")}`;
+    if (sseStartedRef.current && lastRunKeyRef.current === runKey) return;
 
     sseStartedRef.current = true;
-    lastIdRef.current = record.id;
+    lastRunKeyRef.current = runKey;
+
+    // Track exactly what we asked for in THIS run
+    requestedSectionsRef.current = new Set(missingSections);
 
     let cancelled = false;
-    const url = `${API_BASE}/watches/${record.id}/analyze-stream?parallel=0`;
+    const url = `${API_BASE}/watches/${record.id}/analyze-stream?wait=1&timeout=45`;
 
     const stop = openAnalysisStreamXHR(url, ({ event, data }) => {
       if (cancelled) return;
-      console.log("[SSE event]", event, data);
 
       if (event === "section" && data?.section) {
         const sec: string = data.section;
-        const payload = data.data?.[sec] ?? data.data;
+        // Safety: ignore sections we didn't ask for in this run
+        if (!requestedSectionsRef.current.has(sec)) return;
 
-        setRecord(prev => {
-          if (!prev) return prev;
-          const nextAI = { ...(prev.ai || {}), [sec]: payload };
-          return { ...prev, ai: nextAI };
+        const rawPayload = data.data?.[sec] ?? data.data;
+
+        // Optional: shape guard so empty/invalid payloads don’t clobber good data
+        const ok =
+          rawPayload &&
+          typeof rawPayload === "object" &&
+          (sec !== "overall" || ("conclusion" in rawPayload && "score" in rawPayload));
+
+        if (!ok) return;
+
+        setAi(prev => {
+          if (isFilled((prev as any)?.[sec])) return prev;
+          return { ...(prev || {}), [sec]: rawPayload };
         });
       } else if (event === "done") {
-        console.log("[SSE done]");
-        stop();                      // ✅ stop on completion
         sseStartedRef.current = false;
-      } else if (event === "error") {
-        console.warn("[SSE error]", data);
       }
     });
 
     return () => {
       cancelled = true;
-      stop();
+      try { stop(); } catch { }
       sseStartedRef.current = false;
     };
-  }, [record?.id, API_BASE]);
+  }, [record?.id, API_BASE, missingSections.join(",")]);
 
   function logJson(tag: string, obj: unknown, max = 2000) {
     try {
@@ -231,9 +262,8 @@ export default function WatchDetails() {
 
     // If we have packed JSON, use it
     if (packed?.payload) {
-      console.log("[WatchDetails] Using packed JSON (encoded len):", packedData?.length);
-      logJson("[WatchDetails] FULL PACKED", packed);
-      setRecord(packed.payload);
+      setRecord(packed.payload.record);
+      setAi(packed.payload.ai ?? {});
       setLoading(false);
       setErr(null);
       return () => { cancelled = true; };
@@ -269,28 +299,18 @@ export default function WatchDetails() {
     return () => { cancelled = true; };
   }, [API_BASE, idParam, packed, packedData]);
 
-  // ✅ CALL ALL HOOKS BEFORE ANY EARLY RETURNS
-  const dto = useMemo(() => (record ? toWatchCardDTO(record) : null), [record]);
-  const overall = useMemo(
-    () => (record ? toOverallScoreDTO(record) : { score: 0, letter: "-", conclusion: "—" }),
-    [record]
-  );
-  const movementDTO = useMemo(() => (record ? toMovementQualityDTO(record) : null), [record]);
-  const matDTO = useMemo(() => (record ? toMaterialsBuildDTO(record) : null), [record]);
-  const maintDTO = useMemo(() => (record ? toMaintenanceRisksDTO(record) : null), [record]);
-  const valueDTO = useMemo(() => (record ? toValueMoneyDTO(record) : null), [record]);
-  const altDTO = useMemo(() => (record ? toAlternativesDTO(record) : null), [record]);
 
-  // Now it's safe to early return — hook order
-  // 
 
-  useEffect(() => { if (record) logJson("[DTO] WatchCardDTO", dto); }, [record, dto]);
-  useEffect(() => { if (record) logJson("[DTO] Overall", overall); }, [record, overall]);
-  useEffect(() => { if (record && movementDTO) logJson("[DTO] Movement", movementDTO); }, [record, movementDTO]);
-  useEffect(() => { if (record && matDTO) logJson("[DTO] Materials", matDTO); }, [record, matDTO]);
-  useEffect(() => { if (record && maintDTO) logJson("[DTO] Maintenance", maintDTO); }, [record, maintDTO]);
-  useEffect(() => { if (record && valueDTO) logJson("[DTO] ValueForMoney", valueDTO); }, [record, valueDTO]);
-  useEffect(() => { if (record && altDTO) logJson("[DTO] Alternatives", altDTO); }, [record, altDTO]);
+
+  const dto = useMemo(() => (record ? toWatchCardDTO(record, ai) : null), [record, ai]);
+  const overall = useMemo(() => toOverallScoreDTO(ai), [ai]);
+  const movementDTO = useMemo(() => toMovementQualityDTO(ai), [ai]);
+  const matDTO = useMemo(() => toMaterialsBuildDTO(ai), [ai]);
+  const maintDTO = useMemo(() => toMaintenanceRisksDTO(ai), [ai]);
+  const valueDTO = useMemo(() => toValueMoneyDTO(ai), [ai]);
+  const altDTO = useMemo(() => toAlternativesDTO(ai), [ai]);
+
+
   if (loading) {
     return (
       <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
@@ -313,27 +333,33 @@ export default function WatchDetails() {
   const CARD_MARGIN_T = scale(15);
 
   return (
-    <View style={styles.root}>
-      <SafeAreaView style={{ flex: 1 }}>
-        <LinearGradient
-          colors={["#F1F1F1", "#EFC3B0", "#E4ADBE", "#F1F1F1"]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
+    <View style={{ flex: 1 }}>
+      {/* Fullscreen background */}
+      <LinearGradient
+        colors={["#F1F1F1", "#EFC3B0", "#E4ADBE", "#F1F1F1"]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
 
-        {/* Back */}
-        <Pressable hitSlop={12} onPress={() => router.push("/feed/history")} style={styles.backBtn}>
-          <Image source={require("../../assets/images/chevron-left.webp")} style={styles.backIcon} />
-        </Pressable>
-
+      <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom", "left", "right"]}>
         <ScrollView
-          contentContainerStyle={{ paddingBottom: insets.bottom + vh(2) }}
+          contentContainerStyle={{
+            paddingBottom: insets.bottom + vh(2),
+            minHeight: '100%', // ensures background covers full screen
+          }}
           showsVerticalScrollIndicator={false}
         >
+          {/* Back */}
+          <Pressable hitSlop={12} onPress={() => router.push("/feed/history")} style={styles.backBtn}>
+            <Image source={require("../../assets/images/chevron-left.webp")} style={styles.backIcon} />
+          </Pressable>
+
           {dto && <WatchCard {...dto} vw={vw} scale={scale} />}
 
           <OverallScoreCard
+            loading={!ai.overall}
             score={overall.score}
             letter={overall.letter}
             conclusion={overall.conclusion}
@@ -341,19 +367,22 @@ export default function WatchDetails() {
             scale={scale}
           />
 
-          {movementDTO && <MovementQualityCard {...movementDTO} vw={vw} scale={scale} />}
+          <MovementQualityCard
+            {...movementDTO}
+            loading={!movementDTO || (movementDTO.scoreLetter === "-" && !movementDTO.scoreNumeric)}
+            vw={vw}
+            scale={scale}
+          />
 
           {matDTO && <MaterialsAndBuildCard {...matDTO} vw={vw} scale={scale} />}
-
           {maintDTO && <MaintenanceAndRisksCard dto={maintDTO} vw={vw} scale={scale} />}
-
           {valueDTO && <ValueMoneyCard dto={valueDTO} vw={vw} scale={scale} />}
-
           {altDTO && <AlternativesCard dto={altDTO} vw={vw} scale={scale} />}
         </ScrollView>
       </SafeAreaView>
     </View>
   );
+
 }
 
 const styles = StyleSheet.create({

@@ -1,4 +1,7 @@
-import { Money, ServerWatch } from "@/types/watch";
+import { Money, ServerWatch, WatchAI } from "@/types/watch";
+
+const pickNum = (...vals: any[]) =>
+  vals.find(v => typeof v === "number" && Number.isFinite(v) && v > 0) ?? null;
 
 export type WatchCardDTO = {
   name: string;
@@ -6,15 +9,17 @@ export type WatchCardDTO = {
   year?: number | null;
   movement?: string;
   price?: Money;
-  photos: string[]; // displayable URLs
+  photos: string[];
 };
 
-export function toWatchCardDTO(w: ServerWatch): WatchCardDTO {
-  const name = w.name ?? w.ai?.name ?? "";
-  const subtitle = w.subtitle ?? w.ai?.subtitle ?? "";
-  const year = w.ai?.meta?.release_year ?? w.year ?? null;
-  const movement = w.ai?.movement_quality?.type ?? "–";
-  const price = w.ai?.value_for_money?.list_price;
+export function toWatchCardDTO(w: ServerWatch, ai?: WatchAI): WatchCardDTO {
+  const qf = ai?.quick_facts;
+
+  const name = qf?.name ?? "—";
+  const subtitle = qf?.subtitle || undefined;
+  const year = pickNum(qf?.release_year);
+  const movement = qf?.movement_type ?? ai?.movement_quality?.type ?? "—";
+  const price = qf?.list_price ?? ai?.value_for_money?.list_price;
 
   const photos =
     (w.photos ?? [])

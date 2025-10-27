@@ -1,29 +1,92 @@
-import React, { useMemo } from "react";
-import { Image, StyleSheet, Text, View, ImageSourcePropType } from "react-native";
-import GradeRing from "../../../app/components/gradeRing"; // ← adjust path if different
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Image, StyleSheet, Text, View, ImageSourcePropType, Animated, Dimensions } from "react-native";
+import GradeRing from "../../../app/components/gradeRing";
 
-export type OverallScoreCardProps = {
-  score: number;                 // 0..100
-  letter: string;                // "A" | "B" | "C" | "D" | "-"
-  conclusion?: string;           // short AI summary
-  vw: (pct: number) => number;   // your vw helper
-  scale: (n: number) => number;  // your scale helper
-  // Optional fonts
+type OverallScoreCardProps = {
+  score: number;
+  letter: string;
+  conclusion?: string;
+  vw: (pct: number) => number;
+  scale: (n: number) => number;
+  loading?: boolean;                         // drives ring + dots loading
   titleFontFamily?: string;
   bodyFontFamily?: string;
-  // Optional layout overrides
   cardMarginH?: number;
   cardPadding?: number;
   cardRadius?: number;
   cardMarginT?: number;
-  // Optional icon overrides
   infoIcon?: ImageSourcePropType;
   loupeIcon?: ImageSourcePropType;
-  // Optional ring sizing
-  ringSize?: number;        // default 156
-  ringStroke?: number;      // default 20
-  ringLabelFontSize?: number; // default 35
 };
+
+// --- Fixed visuals (no external inputs) ---
+const RING_SIZE = 156;
+const RING_STROKE = 20;
+const RING_LABEL_FONT_SIZE = 35;
+// Slower loading cycle (0→100→0) = 8s
+const LOADING_RING_CYCLE_MS = 8000;
+
+// --- pulsing "..." loader for the center label ---
+function DotsEllipsis({
+  dotSize = 12,
+  gap = 6,
+  baseOpacity = 0.35,
+  peakOpacity = 1,
+  duration = 900,
+}: {
+  dotSize?: number;
+  gap?: number;
+  baseOpacity?: number;
+  peakOpacity?: number;
+  duration?: number;
+}) {
+  const o1 = useRef(new Animated.Value(baseOpacity)).current;
+  const o2 = useRef(new Animated.Value(baseOpacity)).current;
+  const o3 = useRef(new Animated.Value(baseOpacity)).current;
+
+  // one pulsing loop per dot, offset by a phase delay
+  const makeLoop = (val: Animated.Value, delay: number) =>
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(val, { toValue: peakOpacity, duration: duration / 2, useNativeDriver: true }),
+        Animated.timing(val, { toValue: baseOpacity, duration: duration / 2, useNativeDriver: true }),
+      ])
+    );
+
+  useEffect(() => {
+    const loops = [
+      makeLoop(o1, 0),
+      makeLoop(o2, duration / 3),
+      makeLoop(o3, (2 * duration) / 3),
+    ];
+    loops.forEach(l => l.start());
+    return () => loops.forEach(l => l.stop());
+  }, [o1, o2, o3, duration, baseOpacity, peakOpacity]);
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+      <Animated.View
+        style={{
+          width: dotSize, height: dotSize, borderRadius: dotSize / 2,
+          marginHorizontal: gap / 2, backgroundColor: "#CFCFCF", opacity: o1,
+        }}
+      />
+      <Animated.View
+        style={{
+          width: dotSize, height: dotSize, borderRadius: dotSize / 2,
+          marginHorizontal: gap / 2, backgroundColor: "#CFCFCF", opacity: o2,
+        }}
+      />
+      <Animated.View
+        style={{
+          width: dotSize, height: dotSize, borderRadius: dotSize / 2,
+          marginHorizontal: gap / 2, backgroundColor: "#CFCFCF", opacity: o3,
+        }}
+      />
+    </View>
+  );
+}
 
 export default function OverallScoreCard({
   score,
@@ -31,6 +94,7 @@ export default function OverallScoreCard({
   conclusion = "—",
   vw,
   scale,
+  loading = false,
   titleFontFamily,
   bodyFontFamily,
   cardMarginH,
@@ -39,9 +103,6 @@ export default function OverallScoreCard({
   cardMarginT,
   infoIcon = require("../../../assets/images/info.webp"),
   loupeIcon = require("../../../assets/images/loupe.webp"),
-  ringSize = 156,
-  ringStroke = 20,
-  ringLabelFontSize = 35,
 }: OverallScoreCardProps) {
   const S = useMemo(
     () => ({
@@ -63,6 +124,39 @@ export default function OverallScoreCard({
     }),
     [vw, scale, cardMarginH, cardPadding, cardRadius, cardMarginT]
   );
+
+  // Smooth, adjustable-speed loading loop using rAF + triangle wave (fixed slow cycle)
+  const [loopScore, setLoopScore] = useState(0);
+  useEffect(() => {
+    if (!loading) { setLoopScore(0); return; }
+
+    let raf = 0;
+    const t0 = Date.now();
+
+    const tick = () => {
+      const elapsed = (Date.now() - t0) % LOADING_RING_CYCLE_MS;
+      const phase = (elapsed / LOADING_RING_CYCLE_MS) * 2; // 0..2
+      // Triangle wave: 0→1→0
+      const y01 = phase < 1 ? phase : (2 - phase);
+      // Map to 0..100 and quantize a bit to reduce re-renders
+      const value = Math.round(y01 * 100);
+      setLoopScore(value);
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [loading]);
+
+  const isLoading = loading || (letter === "-" && !score);
+
+  // size the dots nicely for the center
+  const dotSize = useMemo(() => {
+    const byLabel = RING_LABEL_FONT_SIZE * 0.42;
+    const byRing = RING_SIZE * 0.12;
+    return Math.max(8, Math.min(byLabel, byRing));
+  }, []);
+  const dotGap = Math.max(4, dotSize * 0.5);
 
   return (
     <View
@@ -100,15 +194,26 @@ export default function OverallScoreCard({
         />
       </View>
 
-      {/* Ring + letter */}
+      {/* Ring + center dots while loading */}
       <View style={{ alignItems: "center", marginTop: S.ringTop }}>
-        <GradeRing
-          score={score ?? 0}
-          letter={letter ?? "-"}
-          baseSize={ringSize}
-          baseStroke={ringStroke}
-          labelFontSize={ringLabelFontSize}
-        />
+        <View style={{ width: RING_SIZE, height: RING_SIZE, position: "relative" }}>
+          <GradeRing
+            score={isLoading ? loopScore : (score ?? 0)}
+            letter={isLoading ? "" : (letter ?? "")}  // hide "-" while loading
+            baseSize={RING_SIZE}
+            baseStroke={RING_STROKE}
+            labelFontSize={RING_LABEL_FONT_SIZE}
+          />
+
+          {isLoading && (
+            <View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}
+            >
+              <DotsEllipsis dotSize={dotSize} gap={dotGap} />
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Conclusion bubble */}
@@ -141,7 +246,7 @@ export default function OverallScoreCard({
             fontWeight: bodyFontFamily ? undefined : "500",
           }}
         >
-          {conclusion}
+          {isLoading ? "Analyzing…" : conclusion}
         </Text>
       </View>
     </View>

@@ -1,4 +1,4 @@
-import { ServerWatch } from "@/types/watch";
+import { WatchAI } from "@/types/watch";
 
 export type ValueMoneyDTO = {
   scoreNumeric: number;
@@ -18,8 +18,8 @@ export type ValueMoneyDTO = {
   specEffNote?: string;
 };
 
-export function toValueMoneyDTO(w: ServerWatch): ValueMoneyDTO {
-  const vfm = (w.ai as any)?.value_for_money ?? {};
+export function toValueMoneyDTO(ai?: WatchAI): ValueMoneyDTO {
+  const vfm = ai?.value_for_money ?? {};
   return {
     scoreNumeric: vfm?.score?.numeric ?? 0,
     scoreLetter: vfm?.score?.letter ?? "-",

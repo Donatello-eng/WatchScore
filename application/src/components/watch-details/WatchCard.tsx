@@ -154,13 +154,11 @@ export default function WatchCard({
         </View>
 
         <View style={{ flex: 1, marginLeft: S.mlPills, alignItems: "center", gap: S.gapSM }}>
-          {year != null && (
-            <SpecPill
-              width={S.pillW} padV={S.pillPadV} iconSize={S.icon}
-              label={String(year)}
-              icon={require("../../../assets/images/calendar.webp")}
-            />
-          )}
+          <SpecPill
+            width={S.pillW} padV={S.pillPadV} iconSize={S.icon}
+            label={String(year)}
+            icon={require("../../../assets/images/calendar.webp")}
+          />
           <SpecPill
             width={S.pillW} padV={S.pillPadV} iconSize={S.icon}
             label={movement ?? "–"}

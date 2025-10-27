@@ -47,14 +47,13 @@ export async function putToS3(
 export async function finalizeWatch(
   watchId: number,
   keys: string[],
-  analyze = true
 ) {
   const photos = keys.map((key) => ({ key }));
   const res = await fetch(`${API_BASE}/watches/${watchId}/finalize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ photos, analyze }),
+    body: JSON.stringify({ photos }),
   });
   if (!res.ok) throw new Error(await res.text());
-  return res.json(); // watch with signed photo URLs + ai
+  return res.json(); 
 }

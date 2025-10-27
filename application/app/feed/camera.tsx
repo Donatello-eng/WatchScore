@@ -28,7 +28,7 @@ import {
 } from "../../src/api/directS3";
 
 import * as ImageManipulator from "expo-image-manipulator";
-import { triggerHaptic } from "hooks/haptics";
+import DotsEllipsis from "@/components/loading/DotsEllipsis";
 
 const MAX_EDGE = 1600;
 const WEBP_QUALITY = 0.75;
@@ -94,6 +94,13 @@ export default function CameraScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   // three slots; null = empty (show gallery icon)
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+
+  const [submitting, setSubmitting] = useState(false);
+
+
+
   const [slots, setSlots] = useState<Array<string | null>>([null, null, null]);
   const localPhotos = slots.filter(Boolean) as string[];
 
@@ -362,9 +369,11 @@ export default function CameraScreen() {
           position: "absolute",
           left: vw(7),
           right: vw(7),
-          bottom: insets.bottom + vh(2), // anchor once
+          bottom: insets.bottom + vh(2),
           alignItems: "center",
+          opacity: submitting ? 0.6 : 1,
         }}
+        pointerEvents={submitting ? "none" : "auto"}
       >
         {/* Thumbnails (centered) */}
         <View
@@ -508,95 +517,73 @@ export default function CameraScreen() {
         ) : (
           // Solid green "Continue" pill
           <Pressable
+            disabled={submitting}
             onPress={async () => {
-              triggerHaptic("impactMedium");
+              if (submitting) return;
+              setSubmitting(true);
               try {
                 const imgs = (slots.filter(Boolean) as string[]).slice(0, 3);
                 if (imgs.length === 0) return;
 
-                // 1) Normalize first → WEBP bytes + correct mime
-                const processed = await Promise.all(
-                  imgs.map((u) => shrinkAndNormalize(u))
-                );
-                // processed[i] = { uri: ".../xxx.webp", mime: "image/webp" }
-
-                // 2) Presign using the ACTUAL content-types
+                const processed = await Promise.all(imgs.map((u) => shrinkAndNormalize(u)));
                 const contentTypes = processed.map((p) => p.mime);
-                const { watchId, uploads } = await initWatchPresign(
-                  processed.length,
-                  contentTypes
-                );
+                const { watchId, uploads } = await initWatchPresign(processed.length, contentTypes);
 
-                // 3) Upload the processed files with EXACT headers from server
                 for (let i = 0; i < processed.length; i++) {
-                  await putToS3(
-                    uploads[i].uploadUrl,
-                    processed[i].uri,
-                    uploads[i].headers
-                  );
+                  await putToS3(uploads[i].uploadUrl, processed[i].uri, uploads[i].headers);
                 }
-                /*
-                                // 4) Finalize (save keys, run AI)
-                                const result = await finalizeWatch(
-                                  watchId,
-                                  uploads.map((u) => u.key),
-                                  true
-                                );
-                                const dataParam = encodeURIComponent(JSON.stringify({ payload: result }));
-                
-                                router.push({
-                                  pathname: "/feed/watch-details",
-                                  params: { data: dataParam },
-                                });
-                */
 
-                await finalizeWatch(watchId, uploads.map(u => u.key), /* analyze */ false);
+                await finalizeWatch(watchId, uploads.map(u => u.key));
 
-                // 2) Route with just the id
+                // navigate
                 router.push({
-                  pathname: "/feed/watch-details",
+                  pathname: "/feed/analyzing",
                   params: { id: String(watchId) },
                 });
-                //console.log(result)
-                // 5) Navigate
-                //router.push({
-                //  pathname: "/feed/watch-details",
-                //  params: { watchId: String(result.id ?? watchId) },
-                //});
               } catch (e: any) {
                 console.warn("direct S3 flow failed:", e?.message || e);
+                // allow retry
+                if (mounted.current) setSubmitting(false);
+                return;
               }
+              // if we got here and navigated, component likely unmounts soon; guard anyway
+              if (mounted.current) setSubmitting(false);
             }}
             style={{
               width: "100%",
-              backgroundColor: "#6DB287", // green
+              backgroundColor: "#6DB287",
               borderRadius: scale(28),
               paddingVertical: scale(28),
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Text
-              style={{
-                color: "#FFFFFF",
-                fontFamily: Font.inter.extraBold,
-                fontSize: scale(22),
-              }}
-            >
-              Continue
-            </Text>
-            <Image
-              source={require("../../assets/images/chevron-left.webp")}
-              style={{
-                position: "absolute",
-                right: scale(22),
-                width: scale(30),
-                height: scale(30),
-                tintColor: "#FFFFFF",
-                transform: [{ rotate: "180deg" }],
-              }}
-              //resizeMode="contain"
-            />
+            {submitting ? (
+              <DotsEllipsis running dotSize={12} gap={6} color="#FFFFFF" duration={900} />
+            ) : (
+              <>
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    fontFamily: Font.inter.extraBold,
+                    fontSize: scale(22),
+                  }}
+                >
+                  Continue
+                </Text>
+                <Image
+                  source={require("../../assets/images/chevron-left.webp")}
+                  style={{
+                    position: "absolute",
+                    right: scale(22),
+                    width: scale(30),
+                    height: scale(30),
+                    tintColor: "#FFFFFF",
+                    transform: [{ rotate: "180deg" }],
+                  }}
+                />
+              </>
+            )}
           </Pressable>
         )}
       </View>
