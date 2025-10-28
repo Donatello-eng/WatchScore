@@ -35,10 +35,7 @@ import { toValueMoneyDTO } from "@/dto/toValueMoneyDTO";
 import { toAlternativesDTO } from "@/dto/toAlternativesDTO";
 import { ServerWatch, WatchAI } from "@/types/watch";
 
-const API_BASE =
-  Platform.OS === "android"
-    ? "http://10.0.2.2:8000"
-    : "http://127.0.0.1:8000";
+const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
 
 function decodeJsonParam<T = unknown>(v?: string | string[] | null): T | null {
   const raw = Array.isArray(v) ? v[0] : v;
@@ -49,8 +46,6 @@ function decodeJsonParam<T = unknown>(v?: string | string[] | null): T | null {
     return null;
   }
 }
-
-type Packed = { payload: { record: ServerWatch; ai: Partial<WatchAI> } };
 
 type SSEFrame = { event?: string; data?: any };
 
@@ -135,34 +130,26 @@ export function openAnalysisStreamXHR(
 }
 
 export default function WatchDetails() {
-  const insets = useSafeAreaInsets();
   const { scale, vw, vh } = useR();
 
-  // Accept BOTH `id` and packed `data`
-  const { id: idParam, data: packedData } = useLocalSearchParams<{ id?: string; data?: string }>();
+  const insets = useSafeAreaInsets();
 
-  const packed = useMemo(() => decodeJsonParam<{ payload: { record: ServerWatch; ai: Partial<WatchAI> } }>(packedData), [packedData]);
+  const sseStartedRef = useRef(false);
+  const lastRunKeyRef = useRef<string | undefined>(undefined);
+  const requestedSectionsRef = useRef<Set<string>>(new Set());
 
   const [record, setRecord] = useState<ServerWatch | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
   const [ai, setAi] = useState<Partial<WatchAI>>({});
 
-  // Decode packed JSON (safe to call every render)
+  const { id: idParam, data: packedData } = useLocalSearchParams<{ id?: string; data?: string }>();
 
-  const sseStartedRef = useRef(false);
-
-  // was: lastIdRef; we now key by id + sections
-  const lastRunKeyRef = useRef<string | undefined>(undefined);
-
-  const requestedSectionsRef = useRef<Set<string>>(new Set());
-
+  const packed = useMemo(() => decodeJsonParam<{ payload: { record: ServerWatch; ai: Partial<WatchAI> } }>(packedData), [packedData]);
 
   const ALL_SECTIONS = ["quick_facts", "overall", "movement_quality", "materials_build", "maintenance_risks", "value_for_money", "alternatives"];
 
   function isFilled(v: any) { return v && typeof v === "object" && Object.keys(v).length > 0; }
-
-
 
   const missingSections = useMemo(() => {
     const ms = ALL_SECTIONS.filter(s => !isFilled((ai as any)[s]));
@@ -170,7 +157,6 @@ export default function WatchDetails() {
     if (ms.includes("overall")) return ["overall", ...ms.filter(s => s !== "overall")];
     return ms;
   }, [ai]);
-
 
   useEffect(() => {
     if (!record?.id) return;
@@ -299,9 +285,6 @@ export default function WatchDetails() {
     return () => { cancelled = true; };
   }, [API_BASE, idParam, packed, packedData]);
 
-
-
-
   const dto = useMemo(() => (record ? toWatchCardDTO(record, ai) : null), [record, ai]);
   const overall = useMemo(() => toOverallScoreDTO(ai), [ai]);
   const movementDTO = useMemo(() => toMovementQualityDTO(ai), [ai]);
@@ -309,7 +292,6 @@ export default function WatchDetails() {
   const maintDTO = useMemo(() => toMaintenanceRisksDTO(ai), [ai]);
   const valueDTO = useMemo(() => toValueMoneyDTO(ai), [ai]);
   const altDTO = useMemo(() => toAlternativesDTO(ai), [ai]);
-
 
   if (loading) {
     return (
@@ -334,7 +316,6 @@ export default function WatchDetails() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Fullscreen background */}
       <LinearGradient
         colors={["#F1F1F1", "#EFC3B0", "#E4ADBE", "#F1F1F1"]}
         start={{ x: 0.5, y: 0 }}
@@ -343,12 +324,17 @@ export default function WatchDetails() {
         pointerEvents="none"
       />
 
-      <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom", "left", "right"]}>
+      {/* safe area: top/left/right only */}
+      <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
         <ScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={{
-            paddingBottom: insets.bottom + vh(2),
-            minHeight: '100%', // ensures background covers full screen
+            flexGrow: 1,
+            paddingBottom: insets.bottom + vh(2), // space above home indicator
           }}
+          contentInsetAdjustmentBehavior="never"
+          scrollIndicatorInsets={{ bottom: insets.bottom }}
+          overScrollMode="never"
           showsVerticalScrollIndicator={false}
         >
           {/* Back */}
@@ -367,12 +353,7 @@ export default function WatchDetails() {
             scale={scale}
           />
 
-          <MovementQualityCard
-            {...movementDTO}
-            loading={!movementDTO || (movementDTO.scoreLetter === "-" && !movementDTO.scoreNumeric)}
-            vw={vw}
-            scale={scale}
-          />
+          <MovementQualityCard {...movementDTO} loading={!movementDTO || (movementDTO.scoreLetter === "-" && !movementDTO.scoreNumeric)} vw={vw} scale={scale} />
 
           {matDTO && <MaterialsAndBuildCard {...matDTO} vw={vw} scale={scale} />}
           {maintDTO && <MaintenanceAndRisksCard dto={maintDTO} vw={vw} scale={scale} />}

@@ -1,13 +1,22 @@
 // MaterialsAndBuildCard.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Image, StyleSheet, Text, View, ViewStyle, Animated, StyleProp } from "react-native";
+import {
+  Image,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+  Animated,
+  StyleProp,
+  Pressable,
+} from "react-native";
 import StatTile from "../../../app/components/statTile";
 import GradeRing from "../../../app/components/gradeRing";
 import DotsEllipsis from "@/components/loading/DotsEllipsis";
+import InfoOverlay from "app/components/InfoOverlay";
 
 // ---- DTO + props ----
 export type MaterialsBuildDTO = {
-  // ring score
   scoreNumeric?: number;          // 0..100
   scoreLetter?: string;           // "A" | "B" | "C" | "D" | "-"
 
@@ -34,20 +43,24 @@ export type MaterialsAndBuildCardProps = MaterialsBuildDTO & {
   titleFontFamily?: string;
   style?: StyleProp<ViewStyle>;
 
-  // optional card overrides
+  // card overrides
   cardMarginH?: number;
   cardPadding?: number;
   cardRadius?: number;
   cardMarginT?: number;
 
-  // optional ring overrides
+  // ring overrides
   ringSize?: number;   // default 86
   ringStroke?: number; // default 10
+
+  // info popup
+  infoTitle?: string;
+  infoText?: string;
 };
 
-// ---- loading ring tuning (aligned with other cards) ----
-const LOADING_RING_CYCLE_MS = 8000; // 0→100→0 in 8s
-const LOADING_RING_STEPS = 120;     // quantization to limit re-renders
+// ---- loading ring tuning ----
+const LOADING_RING_CYCLE_MS = 8000;
+const LOADING_RING_STEPS = 120;
 
 // --- tiny skeleton helpers ---------------------------------------------------
 function SkeletonBox({
@@ -115,10 +128,12 @@ export default function MaterialsAndBuildCard({
   cardMarginT,
   ringSize = 86,
   ringStroke = 10,
+  infoTitle,
+  infoText,
 }: MaterialsAndBuildCardProps) {
   const S = useMemo(
     () => ({
-      cardMarginH: cardMarginH ?? vw(8),
+      cardMarginH: cardMarginH ?? vw(5),
       cardPadding: cardPadding ?? scale(14),
       cardRadius: cardRadius ?? scale(30),
       cardMarginT: cardMarginT ?? scale(15),
@@ -139,8 +154,8 @@ export default function MaterialsAndBuildCard({
     const lastQ = { v: -1 };
     const tick = () => {
       const elapsed = (performance.now() - t0) % LOADING_RING_CYCLE_MS;
-      const phase = (elapsed / LOADING_RING_CYCLE_MS) * 2; // 0..2
-      const y01 = phase < 1 ? phase : (2 - phase);         // triangle 0→1→0
+      const phase = (elapsed / LOADING_RING_CYCLE_MS) * 2;
+      const y01 = phase < 1 ? phase : (2 - phase);
       const q = Math.round(y01 * LOADING_RING_STEPS);
       if (q !== lastQ.v) {
         lastQ.v = q;
@@ -163,6 +178,23 @@ export default function MaterialsAndBuildCard({
     if (totalWeightValue == null) return "–";
     return `~${totalWeightValue}`;
   };
+
+  function capStart(s?: string | null) {
+    const t = String(s ?? "").trim();
+    if (!t) return "–";
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  // info popup state
+  const [showInfo, setShowInfo] = useState(false);
+  const defaultInfoTitle = "About Materials & Build";
+  const defaultInfoText =
+    "What it reflects:\n" +
+    "• Case material and finishing choices.\n" +
+    "• Crystal type and coatings.\n" +
+    "• Assembly/build quality cues.\n" +
+    "• Water-resistance rating (laboratory vs real-world).\n\n" +
+    "Ring score is normalized 0–100, mapped to A/B/C/D.";
 
   return (
     <View
@@ -187,16 +219,19 @@ export default function MaterialsAndBuildCard({
         >
           Materials &amp; Build
         </Text>
-        <Image
-          source={require("../../../assets/images/info.webp")}
-          style={{ width: S.infoSize, height: S.infoSize, tintColor: "#C7C7C7", marginLeft: scale(6) }}
-          resizeMode="contain"
-        />
+
+        <Pressable hitSlop={8} onPress={() => setShowInfo(true)} style={{ marginLeft: 6 }}>
+          <Image
+            source={require("../../../assets/images/info.webp")}
+            style={{ width: S.infoSize, height: S.infoSize, tintColor: "#C7C7C7" }}
+            resizeMode="contain"
+          />
+        </Pressable>
       </View>
 
       {/* Row 1: Weight + Grade ring */}
       <View style={{ flexDirection: "row", marginTop: S.rowGapTop }}>
-        <View style={{ flex: 1, minWidth: 0, marginRight: scale(10) }}>
+        <View style={{ flex: 1, minWidth: 0, marginRight: S.rowGap }}>
           {isLoading ? (
             <StatTileSkeleton scale={scale} style={{ alignSelf: "stretch" }} />
           ) : (
@@ -216,7 +251,7 @@ export default function MaterialsAndBuildCard({
           <View style={{ width: ringSize, height: ringSize, position: "relative" }}>
             <GradeRing
               score={isLoading ? loopScore : (scoreNumeric ?? 0)}
-              letter={isLoading ? "" : (scoreLetter ?? "-")} // hide "-" while loading
+              letter={isLoading ? "" : (scoreLetter ?? "-")}
               baseSize={ringSize}
               baseStroke={ringStroke}
             />
@@ -232,13 +267,13 @@ export default function MaterialsAndBuildCard({
 
       {/* Row 2: Case material + Crystal */}
       <View style={{ flexDirection: "row", marginTop: S.rowGap }}>
-        <View style={{ flex: 1, marginRight: scale(10) }}>
+        <View style={{ flex: 1, marginRight: S.rowGap }}>
           {isLoading ? (
             <StatTileSkeleton scale={scale} />
           ) : (
             <StatTile
               style={{ flex: 1 }}
-              value={`${caseMaterial ?? "–"}`}
+              value={capStart(caseMaterial)}
               icon={require("../../../assets/images/case-material.webp")}
               label="Case Material"
             />
@@ -251,8 +286,8 @@ export default function MaterialsAndBuildCard({
           ) : (
             <StatTile
               style={{ flex: 1 }}
-              value={`${crystalMaterial ?? "–"}`}
-              unit={crystalCoating ? `\n${crystalCoating}` : ""}
+              value={capStart(crystalMaterial)}
+              unit={crystalCoating ? `\n${capStart(crystalCoating)}` : ""}
               unitStyle={{ fontSize: 14, color: "#45494A" }}
               icon={require("../../../assets/images/crystal.webp")}
               label="Crystal"
@@ -263,13 +298,13 @@ export default function MaterialsAndBuildCard({
 
       {/* Row 3: Build quality + Water resistance */}
       <View style={{ flexDirection: "row", marginTop: S.rowGap }}>
-        <View style={{ flex: 1, marginRight: scale(10) }}>
+        <View style={{ flex: 1, marginRight: S.rowGap }}>
           {isLoading ? (
             <StatTileSkeleton scale={scale} />
           ) : (
             <StatTile
               style={{ flex: 1 }}
-              value={`${buildQuality ?? "–"}`}
+              value={capStart(buildQuality)}
               icon={require("../../../assets/images/build-quality.webp")}
               label="Build Quality"
             />
@@ -292,6 +327,14 @@ export default function MaterialsAndBuildCard({
           )}
         </View>
       </View>
+
+      {/* Info Overlay (uses shared component) */}
+      <InfoOverlay
+        visible={showInfo}
+        title={infoTitle ?? defaultInfoTitle}
+        message={infoText ?? defaultInfoText}
+        onClose={() => setShowInfo(false)}
+      />
     </View>
   );
 }

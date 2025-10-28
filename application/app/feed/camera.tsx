@@ -18,8 +18,6 @@ import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
 import { Linking } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
   initWatchPresign,
@@ -51,7 +49,6 @@ export async function shrinkAndNormalize(uri: string, maxEdge = MAX_EDGE) {
     w = dims.width;
     h = dims.height;
   } catch {
-    // If we can’t read size, just re-encode to WEBP without resizing
     const out = await ImageManipulator.manipulateAsync(uri, [], {
       compress: WEBP_QUALITY,
       format: ImageManipulator.SaveFormat.WEBP,
@@ -62,7 +59,6 @@ export async function shrinkAndNormalize(uri: string, maxEdge = MAX_EDGE) {
 
   const longest = Math.max(w, h);
   if (longest <= maxEdge) {
-    // Already small → just normalize to WEBP (fix orientation, strip EXIF)
     const out = await ImageManipulator.manipulateAsync(uri, [], {
       compress: WEBP_QUALITY,
       format: ImageManipulator.SaveFormat.WEBP,
@@ -88,22 +84,18 @@ export async function shrinkAndNormalize(uri: string, maxEdge = MAX_EDGE) {
 }
 
 export default function CameraScreen() {
-  const insets = useSafeAreaInsets();
+
   const { scale, vw, vh } = useR();
+
+  const insets = useSafeAreaInsets();
   const camRef = useRef<CameraView>(null);
+  const mounted = useRef(true);
 
   const [permission, requestPermission] = useCameraPermissions();
-  // three slots; null = empty (show gallery icon)
-  const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
-
   const [submitting, setSubmitting] = useState(false);
-
-
-
   const [slots, setSlots] = useState<Array<string | null>>([null, null, null]);
-  const localPhotos = slots.filter(Boolean) as string[];
 
+  useEffect(() => () => { mounted.current = false; }, []);
   useEffect(() => {
     if (!permission?.granted) requestPermission();
   }, [permission]);
@@ -159,7 +151,6 @@ export default function CameraScreen() {
       const rawUri: string | undefined = res?.uri;
       if (!rawUri) return;
 
-      // ↓ shrink/convert on-device (huge win)
       const { uri: smallUri } = await shrinkAndNormalize(rawUri);
 
       setSlots((prev) => {
@@ -234,6 +225,7 @@ export default function CameraScreen() {
     }
   };
 
+<<<<<<< HEAD
   // create a unique session id
   const makeSessionId = () => `${Date.now()}`;
 
@@ -299,6 +291,9 @@ export default function CameraScreen() {
     );
     return sessionId;
   }
+=======
+  const PILL_HEIGHT = scale(84);
+>>>>>>> 71dc803 (feat(project): add info modal)
 
   return (
     <View style={styles.root}>
@@ -464,8 +459,9 @@ export default function CameraScreen() {
               width: "100%",
               backgroundColor: "rgba(31,31,31,0.4)",
               borderRadius: scale(28),
-              paddingVertical: scale(10),
+              height: PILL_HEIGHT,
               alignItems: "center",
+              justifyContent: "center",
             }}
           >
             {/* left: Gallery */}
@@ -553,7 +549,7 @@ export default function CameraScreen() {
               width: "100%",
               backgroundColor: "#6DB287",
               borderRadius: scale(28),
-              paddingVertical: scale(28),
+              height: PILL_HEIGHT,
               alignItems: "center",
               justifyContent: "center",
             }}

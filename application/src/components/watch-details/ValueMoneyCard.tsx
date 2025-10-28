@@ -1,8 +1,17 @@
 // ValueMoneyCard.tsx
-import React, { useMemo } from "react";
-import { Image, StyleSheet, Text, View, ViewStyle, TextStyle } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Image, StyleSheet, Text, View, Pressable } from "react-native";
 import GradeRing from "../../../app/components/gradeRing";
 import StatTile from "../../../app/components/statTile";
+import InfoOverlay from "app/components/InfoOverlay";
+
+/** helpers */
+function capStart(s?: string | null) {
+  if (s == null) return "–";
+  const t = String(s).trim();
+  if (!t) return "–";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 
 export type ValueMoneyDTO = {
   // ring
@@ -44,6 +53,9 @@ export default function ValueMoneyCard({
   cardRadius,
   cardMarginT,
   headerTint = "#C7C7C7",
+  // info overlay
+  infoTitle,
+  infoText,
 }: {
   dto: ValueMoneyDTO;
   vw: (pct: number) => number;
@@ -55,15 +67,18 @@ export default function ValueMoneyCard({
   cardRadius?: number;
   cardMarginT?: number;
   headerTint?: string;
+  infoTitle?: string;
+  infoText?: string;
 }) {
   const S = useMemo(
     () => ({
-      cardMarginH: cardMarginH ?? vw(8),
+      cardMarginH: cardMarginH ?? vw(5),
       cardPadding: cardPadding ?? scale(14),
       cardRadius: cardRadius ?? scale(30),
       cardMarginT: cardMarginT ?? scale(15),
       headerSize: scale(18),
       gap: scale(10),
+      infoSize: scale(18),
     }),
     [vw, scale, cardMarginH, cardPadding, cardRadius, cardMarginT]
   );
@@ -84,6 +99,17 @@ export default function ValueMoneyCard({
     dto.holdingNote && dto.holdingNote.trim().length
       ? ` (${dto.holdingNote})`
       : "";
+
+  // info overlay state
+  const [showInfo, setShowInfo] = useState(false);
+  const defaultInfoTitle = "About Value-for-Money";
+  const defaultInfoText =
+    "What it reflects:\n" +
+    "• List price vs. observed resale averages.\n" +
+    "• Market liquidity (how fast it moves at fair price).\n" +
+    "• Holding value and who benefits (wearer vs. collector).\n" +
+    "• Spec efficiency: specs delivered per unit cost.\n\n" +
+    "Ring shows a normalized 0–100 mapped to A/B/C/D.";
 
   return (
     <View
@@ -107,16 +133,17 @@ export default function ValueMoneyCard({
         >
           Value-for-Money
         </Text>
-        <Image
-          source={require("../../../assets/images/info.webp")}
-          style={{
-            width: scale(18),
-            height: scale(18),
-            tintColor: headerTint,
-            marginLeft: scale(6),
-          }}
-          resizeMode="contain"
-        />
+        <Pressable hitSlop={8} onPress={() => setShowInfo(true)} style={{ marginLeft: scale(6) }}>
+          <Image
+            source={require("../../../assets/images/info.webp")}
+            style={{
+              width: S.infoSize,
+              height: S.infoSize,
+              tintColor: headerTint,
+            }}
+            resizeMode="contain"
+          />
+        </Pressable>
       </View>
 
       {/* Row 1: List Price + Ring */}
@@ -159,7 +186,7 @@ export default function ValueMoneyCard({
         />
         <StatTile
           style={{ flex: 1 }}
-          value={dto.marketLiquidity || "–"}
+          value={capStart(dto.marketLiquidity)}
           icon={require("../../../assets/images/market-liquidity.webp")}
           label="Market Liquidity"
         />
@@ -169,7 +196,7 @@ export default function ValueMoneyCard({
       <View style={{ marginTop: S.gap }}>
         <StatTile
           style={{ alignSelf: "stretch" }}
-          value={dto.holdingLabel || "–"}
+          value={capStart(dto.holdingLabel)}
           unit={holdingUnit}
           unitStyle={{
             fontSize: 13,
@@ -195,7 +222,7 @@ export default function ValueMoneyCard({
           {/* LEFT (wearer) */}
           <View style={{ flex: 1, minWidth: 0, paddingRight: scale(12) }}>
             <StatTile
-              value={dto.valueForWearer || "–"}
+              value={capStart(dto.valueForWearer)}
               icon={require("../../../assets/images/value-for-wearer.webp")}
               label="Value for wearer"
               style={{
@@ -221,7 +248,7 @@ export default function ValueMoneyCard({
           {/* RIGHT (collector) */}
           <View style={{ flex: 1, minWidth: 0, paddingLeft: scale(12) }}>
             <StatTile
-              value={dto.valueForCollector || "–"}
+              value={capStart(dto.valueForCollector)}
               icon={require("../../../assets/images/value-for-collector.webp")}
               label="Value for collector"
               style={{
@@ -241,7 +268,7 @@ export default function ValueMoneyCard({
       <View style={{ marginTop: S.gap }}>
         <StatTile
           style={{ alignSelf: "stretch" }}
-          value={dto.specEffLabel || "–"}
+          value={capStart(dto.specEffLabel)}
           valueSize={scale(18)}
           unit={dto.specEffNote ? `\n${dto.specEffNote}` : ""}
           unitStyle={{
@@ -255,11 +282,19 @@ export default function ValueMoneyCard({
           valueLines={0}
         />
       </View>
+
+      {/* Info overlay */}
+      <InfoOverlay
+        visible={showInfo}
+        title={infoTitle ?? defaultInfoTitle}
+        message={infoText ?? defaultInfoText}
+        onClose={() => setShowInfo(false)}
+      />
     </View>
   );
 }
 
-/** helpers */
+/** money helpers (unchanged) */
 function fmtMoney(input: { raw?: string; amount?: number; currency?: string }) {
   if (input.raw && String(input.raw).trim()) return String(input.raw).trim();
   if (typeof input.amount === "number") {

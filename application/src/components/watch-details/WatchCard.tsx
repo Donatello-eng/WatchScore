@@ -59,7 +59,7 @@ export default function WatchCard({
     pillPadV: scale(9),
     icon: scale(25),
     font: scale(13),
-    cardMarginH: cardMarginH ?? vw(8),
+    cardMarginH: cardMarginH ?? vw(5),
     cardPadding: cardPadding ?? scale(14),
     cardRadius: cardRadius ?? scale(30),
     cardMarginT: cardMarginT ?? scale(15),

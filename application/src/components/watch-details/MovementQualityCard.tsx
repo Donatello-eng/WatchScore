@@ -1,9 +1,19 @@
 // components/MovementQualityCard.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, Image, StyleSheet, ViewStyle, Animated, StyleProp } from "react-native";
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  ViewStyle,
+  Animated,
+  StyleProp,
+  Pressable,
+} from "react-native";
 import GradeRing from "../../../app/components/gradeRing";
 import StatTile from "../../../app/components/statTile";
 import DotsEllipsis from "@/components/loading/DotsEllipsis";
+import InfoOverlay from "app/components/InfoOverlay";
 
 export type MovementQualityDTO = {
   movement?: string;
@@ -24,9 +34,13 @@ export type MovementQualityCardProps = MovementQualityDTO & {
   cardRadius?: number;
   cardMarginT?: number;
 
-  // optional ring tuning (defaults chosen for this smaller card)
+  // ring tuning
   ringSize?: number;    // px
   ringStroke?: number;  // px
+
+  // info-popup content
+  infoTitle?: string;
+  infoText?: string;
 };
 
 // ---- constants aligned with OverallScoreCard behavior ----
@@ -94,10 +108,12 @@ export default function MovementQualityCard({
   cardMarginT,
   ringSize = 86,
   ringStroke = 10,
+  infoTitle,
+  infoText,
 }: MovementQualityCardProps) {
   const S = useMemo(
     () => ({
-      cardMarginH: cardMarginH ?? vw(8),
+      cardMarginH: cardMarginH ?? vw(5),
       cardPadding: cardPadding ?? scale(14),
       cardRadius: cardRadius ?? scale(30),
       cardMarginT: cardMarginT ?? scale(15),
@@ -114,18 +130,14 @@ export default function MovementQualityCard({
   // rAF triangle loop 0→100→0 while loading (same feel as OverallScoreCard)
   const [loopScore, setLoopScore] = useState(0);
   useEffect(() => {
-    if (!loading) return; // keep last frame to avoid jump; real score replaces it below
-
+    if (!loading) return;
     let raf = 0;
     const t0 = performance.now();
-    const lastQ = { v: -1 }; // last quantized value to avoid redundant setState
-
+    const lastQ = { v: -1 };
     const tick = () => {
       const elapsed = (performance.now() - t0) % LOADING_RING_CYCLE_MS;
       const phase = (elapsed / LOADING_RING_CYCLE_MS) * 2; // 0..2
       const y01 = phase < 1 ? phase : (2 - phase);         // triangle 0→1→0
-
-      // quantize to LOADING_RING_STEPS then map to 0..100
       const q = Math.round(y01 * LOADING_RING_STEPS);
       if (q !== lastQ.v) {
         lastQ.v = q;
@@ -133,7 +145,6 @@ export default function MovementQualityCard({
       }
       raf = requestAnimationFrame(tick);
     };
-
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [loading]);
@@ -143,6 +154,22 @@ export default function MovementQualityCard({
   // center dots sizing proportional to ring
   const dotSize = Math.max(8, Math.min(ringSize * 0.14, 12));
   const dotGap = Math.max(4, dotSize * 0.5);
+
+  // info overlay
+  const [showInfo, setShowInfo] = useState(false);
+  const defaultInfoTitle = "About Movement Quality";
+  const defaultInfoText =
+    "What it reflects:\n" +
+    "• Movement type, architecture, finishing cues.\n" +
+    "• Claimed/observed accuracy bands and reliability signals.\n" +
+    "• Service intervals and known weak points.\n\n" +
+    "Score is normalized 0–100 and mapped to A/B/C/D.";
+
+  function capStart(s?: string | null) {
+    const t = String(s ?? "").trim();
+    if (!t) return "–";
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
 
   return (
     <View
@@ -169,11 +196,13 @@ export default function MovementQualityCard({
         >
           Movement Quality
         </Text>
-        <Image
-          source={require("../../../assets/images/info.webp")}
-          style={{ width: S.infoSize, height: S.infoSize, tintColor: "#C7C7C7", marginLeft: scale(6) }}
-          resizeMode="contain"
-        />
+        <Pressable hitSlop={8} onPress={() => setShowInfo(true)} style={{ marginLeft: scale(6) }}>
+          <Image
+            source={require("../../../assets/images/info.webp")}
+            style={{ width: S.infoSize, height: S.infoSize, tintColor: "#C7C7C7" }}
+            resizeMode="contain"
+          />
+        </Pressable>
       </View>
 
       {/* Row 1: Type + Grade ring */}
@@ -184,7 +213,7 @@ export default function MovementQualityCard({
           ) : (
             <StatTile
               style={{ alignSelf: "stretch" }}
-              value={movement}
+              value={capStart(movement)}
               icon={require("../../../assets/images/type.webp")}
               label="Type"
             />
@@ -202,7 +231,6 @@ export default function MovementQualityCard({
 
             {isLoading && (
               <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
-                {/* Expected DotsEllipsis API: {running?, dotSize?, gap?, color?, duration?} */}
                 <DotsEllipsis running dotSize={dotSize} gap={dotGap} color="#CFCFCF" duration={900} />
               </View>
             )}
@@ -230,13 +258,21 @@ export default function MovementQualityCard({
           ) : (
             <StatTile
               style={{ flex: 1 }}
-              value={reliability}
+              value={capStart(reliability)}
               icon={require("../../../assets/images/reliability.webp")}
               label="Reliability"
             />
           )}
         </View>
       </View>
+
+      {/* Shared info overlay */}
+      <InfoOverlay
+        visible={showInfo}
+        title={infoTitle ?? defaultInfoTitle}
+        message={infoText ?? defaultInfoText}
+        onClose={() => setShowInfo(false)}
+      />
     </View>
   );
 }

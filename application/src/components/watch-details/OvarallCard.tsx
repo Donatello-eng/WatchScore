@@ -1,6 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Image, StyleSheet, Text, View, ImageSourcePropType, Animated, Dimensions } from "react-native";
+import {
+  Image,
+  StyleSheet,
+  Text,
+  View,
+  ImageSourcePropType,
+  Animated,
+  Pressable,
+} from "react-native";
 import GradeRing from "../../../app/components/gradeRing";
+import InfoOverlay from "app/components/InfoOverlay";
 
 type OverallScoreCardProps = {
   score: number;
@@ -17,6 +26,10 @@ type OverallScoreCardProps = {
   cardMarginT?: number;
   infoIcon?: ImageSourcePropType;
   loupeIcon?: ImageSourcePropType;
+
+  // optional overrides for the info popup
+  infoTitle?: string;
+  infoText?: string;
 };
 
 // --- Fixed visuals (no external inputs) ---
@@ -44,7 +57,6 @@ function DotsEllipsis({
   const o2 = useRef(new Animated.Value(baseOpacity)).current;
   const o3 = useRef(new Animated.Value(baseOpacity)).current;
 
-  // one pulsing loop per dot, offset by a phase delay
   const makeLoop = (val: Animated.Value, delay: number) =>
     Animated.loop(
       Animated.sequence([
@@ -55,11 +67,7 @@ function DotsEllipsis({
     );
 
   useEffect(() => {
-    const loops = [
-      makeLoop(o1, 0),
-      makeLoop(o2, duration / 3),
-      makeLoop(o3, (2 * duration) / 3),
-    ];
+    const loops = [makeLoop(o1, 0), makeLoop(o2, duration / 3), makeLoop(o3, (2 * duration) / 3)];
     loops.forEach(l => l.start());
     return () => loops.forEach(l => l.stop());
   }, [o1, o2, o3, duration, baseOpacity, peakOpacity]);
@@ -103,10 +111,12 @@ export default function OverallScoreCard({
   cardMarginT,
   infoIcon = require("../../../assets/images/info.webp"),
   loupeIcon = require("../../../assets/images/loupe.webp"),
+  infoTitle,
+  infoText,
 }: OverallScoreCardProps) {
   const S = useMemo(
     () => ({
-      cardMarginH: cardMarginH ?? vw(8),
+      cardMarginH: cardMarginH ?? vw(5),
       cardPadding: cardPadding ?? scale(14),
       cardRadius: cardRadius ?? scale(30),
       cardMarginT: cardMarginT ?? scale(15),
@@ -121,6 +131,13 @@ export default function OverallScoreCard({
       bodyLine: scale(18),
       ringTop: scale(20),
       bubbleTop: scale(20),
+      popupTitle: scale(18),
+      popupBody: scale(14),
+      popupPad: scale(16),
+      popupRadius: scale(18),
+      closePadH: scale(14),
+      closePadV: scale(10),
+      closeRadius: scale(12),
     }),
     [vw, scale, cardMarginH, cardPadding, cardRadius, cardMarginT]
   );
@@ -136,9 +153,7 @@ export default function OverallScoreCard({
     const tick = () => {
       const elapsed = (Date.now() - t0) % LOADING_RING_CYCLE_MS;
       const phase = (elapsed / LOADING_RING_CYCLE_MS) * 2; // 0..2
-      // Triangle wave: 0→1→0
-      const y01 = phase < 1 ? phase : (2 - phase);
-      // Map to 0..100 and quantize a bit to reduce re-renders
+      const y01 = phase < 1 ? phase : (2 - phase); // 0→1→0
       const value = Math.round(y01 * 100);
       setLoopScore(value);
       raf = requestAnimationFrame(tick);
@@ -157,6 +172,17 @@ export default function OverallScoreCard({
     return Math.max(8, Math.min(byLabel, byRing));
   }, []);
   const dotGap = Math.max(4, dotSize * 0.5);
+
+  // Info overlay state
+  const [showInfo, setShowInfo] = useState(false);
+  const defaultInfoTitle = "About Overall Score";
+  const defaultInfoText =
+    "The ring shows a normalized score from 0–100 mapped to A/B/C/D.\n\n" +
+    "How it’s computed:\n" +
+    "• Signals from the analysis (movement, materials, service risk, accuracy, QC, value).\n" +
+    "• Weighted, normalized, and clamped to 0–100.\n" +
+    "• The letter always matches the numeric bin.\n\n" +
+    "Scores can update when specs or photos improve.";
 
   return (
     <View
@@ -182,16 +208,14 @@ export default function OverallScoreCard({
         >
           Overall Score
         </Text>
-        <Image
-          source={infoIcon}
-          style={{
-            width: S.infoSize,
-            height: S.infoSize,
-            marginLeft: scale(6),
-            tintColor: "#c5c5c5ff",
-          }}
-          resizeMode="contain"
-        />
+
+        <Pressable hitSlop={8} onPress={() => setShowInfo(true)} style={{ marginLeft: scale(6) }}>
+          <Image
+            source={infoIcon}
+            style={{ width: S.infoSize, height: S.infoSize, tintColor: "#c5c5c5ff" }}
+            resizeMode="contain"
+          />
+        </Pressable>
       </View>
 
       {/* Ring + center dots while loading */}
@@ -206,10 +230,7 @@ export default function OverallScoreCard({
           />
 
           {isLoading && (
-            <View
-              pointerEvents="none"
-              style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}
-            >
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
               <DotsEllipsis dotSize={dotSize} gap={dotGap} />
             </View>
           )}
@@ -228,12 +249,7 @@ export default function OverallScoreCard({
       >
         <Image
           source={loupeIcon}
-          style={{
-            width: S.loupeSize,
-            height: S.loupeSize,
-            marginTop: S.loupeMarginTop,
-            marginRight: S.loupeMarginRight,
-          }}
+          style={{ width: S.loupeSize, height: S.loupeSize, marginTop: S.loupeMarginTop, marginRight: S.loupeMarginRight }}
           resizeMode="contain"
         />
         <Text
@@ -249,6 +265,14 @@ export default function OverallScoreCard({
           {isLoading ? "Analyzing…" : conclusion}
         </Text>
       </View>
+
+      {/* Shared Info overlay */}
+      <InfoOverlay
+        visible={showInfo}
+        title={infoTitle ?? defaultInfoTitle}
+        message={infoText ?? defaultInfoText}
+        onClose={() => setShowInfo(false)}
+      />
     </View>
   );
 }

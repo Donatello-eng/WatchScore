@@ -1,6 +1,7 @@
 // AlternativesCard.tsx
-import React, { useMemo } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import InfoOverlay from "app/components/InfoOverlay";
+import React, { useMemo, useState } from "react";
+import { Image, StyleSheet, Text, View, Pressable } from "react-native";
 
 export type Money = { amount?: number; currency?: string; raw?: string };
 
@@ -27,6 +28,8 @@ export default function AlternativesCard({
   cardRadius,
   cardMarginT,
   headerTint = "#C7C7C7",
+  infoTitle,
+  infoText,
 }: {
   dto: AlternativesDTO;
   vw: (pct: number) => number;
@@ -40,16 +43,29 @@ export default function AlternativesCard({
   cardRadius?: number;
   cardMarginT?: number;
   headerTint?: string;
+  infoTitle?: string;
+  infoText?: string;
 }) {
   const S = useMemo(
     () => ({
-      cardMarginH: cardMarginH ?? vw(8),
+      cardMarginH: cardMarginH ?? vw(5),
       cardPadding: cardPadding ?? scale(14),
       cardRadius: cardRadius ?? scale(30),
       cardMarginT: cardMarginT ?? scale(15),
+      headerSize: scale(18),
+      infoSize: scale(18),
     }),
     [vw, scale, cardMarginH, cardPadding, cardRadius, cardMarginT]
   );
+
+  const [showInfo, setShowInfo] = useState(false);
+  const defaultInfoTitle = "About Alternatives";
+  const defaultInfoText =
+    "What you see:\n" +
+    "• Suggested comparable models by brand/segment.\n" +
+    "• Movement family or caliber tag for quick filtering.\n" +
+    "• A reference price (list or parsed numeric when available).\n\n" +
+    "Use this to cross-shop similar specs, movements, and price bands.";
 
   return (
     <View
@@ -68,21 +84,22 @@ export default function AlternativesCard({
         <Text
           style={[
             styles.headerText,
-            { fontSize: scale(18), fontFamily: titleFontFamily },
+            { fontSize: S.headerSize, fontFamily: titleFontFamily },
           ]}
         >
           Alternatives
         </Text>
-        <Image
-          source={require("../../../assets/images/info.webp")}
-          style={{
-            width: scale(18),
-            height: scale(18),
-            tintColor: headerTint,
-            marginLeft: scale(6),
-          }}
-          resizeMode="contain"
-        />
+        <Pressable hitSlop={8} onPress={() => setShowInfo(true)} style={{ marginLeft: scale(6) }}>
+          <Image
+            source={require("../../../assets/images/info.webp")}
+            style={{
+              width: S.infoSize,
+              height: S.infoSize,
+              tintColor: headerTint,
+            }}
+            resizeMode="contain"
+          />
+        </Pressable>
       </View>
 
       {(dto.items ?? []).map((alt, i) => (
@@ -178,6 +195,13 @@ export default function AlternativesCard({
           </View>
         </View>
       ))}
+
+      <InfoOverlay
+        visible={showInfo}
+        title={infoTitle ?? defaultInfoTitle}
+        message={infoText ?? defaultInfoText}
+        onClose={() => setShowInfo(false)}
+      />
     </View>
   );
 }
