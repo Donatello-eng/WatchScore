@@ -40,11 +40,7 @@ const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://12
 function decodeJsonParam<T = unknown>(v?: string | string[] | null): T | null {
   const raw = Array.isArray(v) ? v[0] : v;
   if (!raw) return null;
-  try {
-    return JSON.parse(decodeURIComponent(raw)) as T;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(decodeURIComponent(raw)) as T; } catch { return null; }
 }
 
 type SSEFrame = { event?: string; data?: any };

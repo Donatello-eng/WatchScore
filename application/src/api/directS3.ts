@@ -1,8 +1,10 @@
 import * as FileSystem from "expo-file-system/legacy";
+import { Platform } from "react-native";
 
 // For emulator: http://10.0.2.2:8000
 // For real device: your ngrok HTTPS URL
-const API_BASE = "http://10.0.2.2:8000";
+
+const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
 
 type PresignItem = {
   key: string;
