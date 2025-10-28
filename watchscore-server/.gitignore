@@ -48,6 +48,8 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
+*.db-shm
+*.db-wal
 # If you only want to ignore the dev DB specifically, replace the above with:
 # prisma/dev.db
 # prisma/dev.db-journal
