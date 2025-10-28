@@ -27,6 +27,7 @@ import {
 
 import * as ImageManipulator from "expo-image-manipulator";
 import DotsEllipsis from "@/components/loading/DotsEllipsis";
+import { triggerHaptic } from "hooks/haptics";
 
 const MAX_EDGE = 1600;
 const WEBP_QUALITY = 0.75;
@@ -225,75 +226,7 @@ export default function CameraScreen() {
     }
   };
 
-<<<<<<< HEAD
-  // create a unique session id
-  const makeSessionId = () => `${Date.now()}`;
-
-  // ensure a uri is a file we own; copy into app doc dir under the session folder
-  async function copyIntoSession(uri: string, sessionDir: string, idx: number) {
-    // ensure dir exists
-    await FileSystem.makeDirectoryAsync(sessionDir, {
-      intermediates: true,
-    }).catch(() => {});
-    const ext = uri.split(".").pop() || "jpg";
-    const dest = `${sessionDir}/photo_${idx + 1}.${ext}`;
-    try {
-      // If it's already a file:// we can copy directly. If it's content:// (Android gallery), copyAsync still works.
-      await FileSystem.copyAsync({ from: uri, to: dest });
-      return dest;
-    } catch {
-      // Fallback: try to download (covers some content:// providers)
-      const dl = await FileSystem.downloadAsync(uri, dest);
-      return dl.uri;
-    }
-  }
-
-  // persist current 3 slots -> returns sessionId
-  async function persistCurrentSlots(): Promise<string | null> {
-    const filled = slots.filter(Boolean) as string[];
-    if (filled.length === 0) return null;
-
-    const sessionId = `${Date.now()}`;
-
-    // If your upload flow reads the URIs directly, you can skip copying entirely.
-    // If you want a per-session folder anyway, copy the *compressed* files:
-    const FS: any = FileSystem as any;
-    const baseDir: string | null =
-      FS?.documentDirectory ?? FS?.cacheDirectory ?? null;
-    let images: string[] = filled;
-
-    if (baseDir) {
-      const dir = `${baseDir}sessions/${sessionId}`;
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(
-        () => {}
-      );
-      const out: string[] = Array(3).fill("");
-
-      for (let i = 0; i < 3; i++) {
-        const uri = slots[i];
-        if (!uri) continue;
-        const ext = (uri.split(".").pop() || "jpg").split("?")[0]; // respects webp/jpeg
-        const dest = `${dir}/photo_${i + 1}.${ext}`;
-        try {
-          await FileSystem.copyAsync({ from: uri, to: dest });
-          out[i] = dest;
-        } catch {
-          out[i] = uri;
-        }
-      }
-      images = out;
-    }
-
-    const manifest = { id: sessionId, createdAt: Date.now(), images };
-    await AsyncStorage.setItem(
-      `session:${sessionId}`,
-      JSON.stringify(manifest)
-    );
-    return sessionId;
-  }
-=======
   const PILL_HEIGHT = scale(84);
->>>>>>> 71dc803 (feat(project): add info modal)
 
   return (
     <View style={styles.root}>
