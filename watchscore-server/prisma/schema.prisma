@@ -8,8 +8,27 @@ generator client {
   interface = "asyncio"
 }
 
+enum WatchStatus {
+  processing
+  complete
+  error
+}
+
+model User {
+  id         Int       @id @default(autoincrement())
+  kind       String    @default("anon")
+  clientId   String    @unique              // uuid v4 from device
+  apiKeyHash String                           // sha256 of opaque API key
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @updatedAt
+  watches    Watch[]
+}
+
 model Watch {
-  id             Int       @id @default(autoincrement())
+  id             Int           @id @default(autoincrement())
+  userId         Int?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   name           String?
   subtitle       String?
   brand          String?
@@ -17,12 +36,18 @@ model Watch {
   year           Int?
   overallLetter  String?
   overallNumeric Int?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+
+  status         WatchStatus   @default(processing) // processing|complete|error
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
   photos         Photo[]
   analysis       WatchAnalysis?
 
   @@unique([brand, model, year])
+  @@index([userId, createdAt])
+  @@index([status])
 }
 
 model Photo {
@@ -30,10 +55,11 @@ model Photo {
   watchId   Int
   watch     Watch    @relation(fields: [watchId], references: [id], onDelete: Cascade)
 
-  // add this:
-  key       String?  // S3 object key, e.g. "watches/123/photo_1_abc.jpg"
+  // S3 object key, e.g., "watches/123/photo_1_abc.jpg"
+  key       String?
 
-  url       String?  // optional: you can omit storing URL since we’ll sign GET each time
+  // optional; you can omit and presign GET on demand
+  url       String?
   mime      String?
   index     Int?
   createdAt DateTime @default(now())
@@ -45,6 +71,9 @@ model WatchAnalysis {
   id        Int      @id @default(autoincrement())
   watchId   Int      @unique
   watch     Watch    @relation(fields: [watchId], references: [id], onDelete: Cascade)
+
   aiJsonStr String
+  sections  Int      @default(0)            // # of sections persisted so far
+
   createdAt DateTime @default(now())
 }

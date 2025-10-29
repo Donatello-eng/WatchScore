@@ -4,3 +4,5 @@ prisma==0.15.0
 openai==2.6.1
 boto3
 botocore
+uvicorn[standard]
+gunicorn

@@ -2,8 +2,10 @@
 services:
   api:
     image: ${IMAGE_NAME:-watchscore-backend}:${IMAGE_TAG:-latest}
+    platform: "linux/amd64"
     env_file: [.env]
-    ports: ["8000:8000"]
+    ports: 
+      - "127.0.0.1:18000:8000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]

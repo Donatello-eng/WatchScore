@@ -35,7 +35,8 @@ import { toValueMoneyDTO } from "@/dto/toValueMoneyDTO";
 import { toAlternativesDTO } from "@/dto/toAlternativesDTO";
 import { ServerWatch, WatchAI } from "@/types/watch";
 
-const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
+//const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
+const API_BASE = "https://api.watchscore.bump.games";
 
 function decodeJsonParam<T = unknown>(v?: string | string[] | null): T | null {
   const raw = Array.isArray(v) ? v[0] : v;

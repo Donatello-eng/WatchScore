@@ -7,22 +7,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# curl is needed by your compose healthcheck
+# add libatomic1 so prisma's bundled node can run
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl && rm -rf /var/lib/apt/lists/*
+    curl libatomic1 \
+  && rm -rf /var/lib/apt/lists/*
 
-# Install deps first for better layer caching
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# If you use prisma-client-py, generate the client now (uncomment if applicable)
-# COPY prisma ./prisma
-# RUN python -m prisma generate
+# copy schema before generate
+COPY prisma ./prisma
+RUN python -m prisma generate
 
-# Copy the rest of the source
+# rest of app
 COPY . .
 
 EXPOSE 8000
-
-# 2 workers is a sane default for a small VM; tune as needed
-CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-w", "2", "-b", "0.0.0.0:8000", "app.main:app"]
+# pick one:
+# CMD ["gunicorn","-k","uvicorn.workers.UvicornWorker","-w","2","-b","0.0.0.0:8000","app.main:app"]
+CMD ["uvicorn","app.main:app","--host","0.0.0.0","--port","8000"]

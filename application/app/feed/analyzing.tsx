@@ -16,7 +16,10 @@ import { ServerWatch, WatchAI } from "@/types/watch";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
-const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
+//const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
+
+const API_BASE = "https://api.watchscore.bump.games";
+
 
 type SSEFrame = { event?: string; data?: any };
 

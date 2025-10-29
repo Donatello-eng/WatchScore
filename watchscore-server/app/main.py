@@ -393,24 +393,6 @@ async def init_watch_presign(
 
     return {"watchId": watch.id, "uploads": items}
 
-async def _call_openai_json(messages, model: str) -> str:
-    delay = 0.8
-    for attempt in range(5):
-        try:
-            async with OAI_SEM:
-                async with asyncio.timeout(45):
-                    resp = await oclient.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        response_format={"type": "json_object"},
-                        **({"temperature": 0.2} if model in {"gpt-4o","gpt-4o-mini","gpt-4.1"} else {}),
-                    )
-            return resp.choices[0].message.content or "{}"
-        except Exception:
-            if attempt == 4:
-                raise
-            await asyncio.sleep(delay + random.random() * 0.4)
-            delay = min(delay * 2.0, 6.0)
 
 async def _run_ai_analysis_strict(watch_id: int, keys: list[str]):
     try:
