@@ -9,6 +9,8 @@ import {
   StyleSheet as RNStyleSheet,
   Animated,
   Easing,
+  InteractionManager,
+  Linking,
 } from "react-native";
 import {
   SafeAreaView,
@@ -18,7 +20,6 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { router } from "expo-router";
 import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
-import { Linking } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 
 import {
@@ -34,6 +35,7 @@ import PermissionRequired from "../components/permissionRequired";
 
 const MAX_EDGE = 1600;
 const WEBP_QUALITY = 0.75;
+const MIN_INTERVAL_MS = 450; // small debounce between shots
 
 function getImageSize(uri: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
@@ -89,7 +91,6 @@ export async function shrinkAndNormalize(uri: string, maxEdge = MAX_EDGE) {
 
 export default function CameraScreen() {
   const { scale, vw, vh } = useR();
-
   const insets = useSafeAreaInsets();
   const camRef = useRef<CameraView>(null);
   const mounted = useRef(true);
@@ -98,18 +99,21 @@ export default function CameraScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [slots, setSlots] = useState<Array<string | null>>([null, null, null]);
 
+  // 🔒 Shutter gating: LOCK UNTIL THUMBNAIL RENDERS
+  const [shutterLocked, setShutterLocked] = useState(false);
+  const [pendingSlot, setPendingSlot] = useState<number | null>(null);
+  const lastShotAtRef = useRef(0);
+
   // --- SHUTTER FX ANIMATIONS ---
   const flashOpacity = useRef(new Animated.Value(0)).current; // white flash
   const camScale = useRef(new Animated.Value(1)).current; // camera zoom-pop
-  const shutterScale = useRef(new Animated.Value(1)).current; // shutter button pulse
+  const shutterScale = useRef(new Animated.Value(1)).current; // shutter pulse
   const rippleScale = useRef(new Animated.Value(0.7)).current; // ring ripple
   const rippleOpacity = useRef(new Animated.Value(0)).current; // ring ripple
 
   const playShutterFX = () => {
-    // haptic tap
     triggerHaptic("impactLight");
 
-    // flash: 0 -> 1 very fast, then fade out
     const flashIn = Animated.timing(flashOpacity, {
       toValue: 1,
       duration: 0,
@@ -123,7 +127,6 @@ export default function CameraScreen() {
       useNativeDriver: true,
     });
 
-    // camera scale pop
     const camIn = Animated.timing(camScale, {
       toValue: 0.985,
       duration: 80,
@@ -137,7 +140,6 @@ export default function CameraScreen() {
       useNativeDriver: true,
     });
 
-    // shutter pulse
     const shutterIn = Animated.timing(shutterScale, {
       toValue: 0.94,
       duration: 80,
@@ -152,7 +154,6 @@ export default function CameraScreen() {
       useNativeDriver: true,
     });
 
-    // ripple (starts faint, expands & fades)
     rippleScale.setValue(0.7);
     rippleOpacity.setValue(0.18);
     const rippleAnim = Animated.parallel([
@@ -170,7 +171,6 @@ export default function CameraScreen() {
       }),
     ]);
 
-    // run them together (with slight overlaps for a snappy feel)
     Animated.parallel([
       Animated.sequence([flashIn, flashOut]),
       Animated.sequence([camIn, camOut]),
@@ -187,8 +187,7 @@ export default function CameraScreen() {
     []
   );
 
-  // (Optional) If this auto-requests, it can consume the only prompt opportunity.
-  // Consider removing if you want the prompt only when the user taps.
+  // (Optional) You may want to remove this auto-request to avoid consuming the only prompt window.
   useEffect(() => {
     if (!permission?.granted) requestPermission();
   }, [permission]);
@@ -213,31 +212,77 @@ export default function CameraScreen() {
     );
   }
 
+  const allFull = slots.every(Boolean);
+
+  // Thumbnail loaded/errored => unlock if it was the pending one
+  const onThumbSettled = (idx: number) => {
+    if (pendingSlot === idx) {
+      setPendingSlot(null);
+      setShutterLocked(false);
+      lastShotAtRef.current = Date.now();
+    }
+  };
+
   const takePhoto = async () => {
+    if (shutterLocked) return;
+    const now = Date.now();
+    if (now - lastShotAtRef.current < MIN_INTERVAL_MS) return;
+    if (allFull) return;
+
+    // Choose slot ONCE and stick to it
+    const slotIndex = (() => {
+      const i = slots.findIndex((s) => s === null);
+      return i === -1 ? slots.length - 1 : i;
+    })();
+
+    // Lock shutter until the thumbnail really renders
+    setShutterLocked(true);
+    setPendingSlot(slotIndex);
+
     try {
-      // Kick off the visual FX immediately
       playShutterFX();
 
+      // Capture fast
       const res: any = await camRef.current?.takePictureAsync({
         quality: 1,
         skipProcessing: true,
         shutterSound: false,
       });
-
       const rawUri: string | undefined = res?.uri;
-      if (!rawUri) return;
+      if (!rawUri) {
+        // unlock on failure
+        setPendingSlot(null);
+        setShutterLocked(false);
+        return;
+      }
 
-      const { uri: smallUri } = await shrinkAndNormalize(rawUri);
-
+      // Show raw preview immediately in the reserved slot
       setSlots((prev) => {
-        const i = prev.findIndex((s) => s === null);
-        if (i === -1) return prev;
         const next = [...prev];
-        next[i] = smallUri;
+        next[slotIndex] = rawUri;
         return next;
+      });
+
+      // Compress/swizzle after interactions; swap in if unchanged
+      InteractionManager.runAfterInteractions(async () => {
+        try {
+          const { uri: smallUri } = await shrinkAndNormalize(rawUri);
+          if (!mounted.current) return;
+          setSlots((prev) => {
+            const next = [...prev];
+            if (next[slotIndex] === rawUri) next[slotIndex] = smallUri;
+            return next;
+          });
+          // Note: onLoadEnd will fire again for the processed image too.
+          // We already unlock on the first onLoadEnd; double calls are harmless.
+        } catch (e) {
+          console.warn("shrinkAndNormalize error", e);
+        }
       });
     } catch (e) {
       console.warn("takePicture error", e);
+      setPendingSlot(null);
+      setShutterLocked(false);
     }
   };
 
@@ -261,7 +306,6 @@ export default function CameraScreen() {
     borderTopWidth: CORNER.stroke,
     borderLeftWidth: CORNER.stroke,
   };
-  const allFull = slots.every(Boolean);
 
   const pickFromGallery = async () => {
     try {
@@ -306,7 +350,7 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Wrap the CameraView in an Animated container to apply the scale pop */}
+      {/* Camera with scale pop */}
       <Animated.View
         style={[
           RNStyleSheet.absoluteFill,
@@ -317,7 +361,7 @@ export default function CameraScreen() {
           ref={camRef}
           style={RNStyleSheet.absoluteFill}
           facing="back"
-          animateShutter={false} // we do our own
+          animateShutter={false}
         />
       </Animated.View>
 
@@ -326,7 +370,7 @@ export default function CameraScreen() {
         pointerEvents="none"
         style={[
           RNStyleSheet.absoluteFill,
-          { backgroundColor: "#FFFFFF", opacity: flashOpacity },
+          { backgroundColor: "#232323ff", opacity: flashOpacity },
         ]}
       />
 
@@ -433,6 +477,14 @@ export default function CameraScreen() {
                   <Image
                     source={{ uri }}
                     style={{ width: "100%", height: "100%" }}
+                    onLoadEnd={() => {
+                      // unlock only when the pending slot’s preview actually rendered
+                      onThumbSettled(idx);
+                    }}
+                    onError={() => {
+                      // don’t deadlock if preview fails
+                      onThumbSettled(idx);
+                    }}
                   />
                 ) : (
                   <Image
@@ -482,7 +534,7 @@ export default function CameraScreen() {
         </View>
 
         {/* Bottom control pill */}
-        {!allFull ? (
+        {!slots.every(Boolean) ? (
           <View
             style={{
               width: "100%",
@@ -530,10 +582,15 @@ export default function CameraScreen() {
               </Text>
             </Pressable>
 
-            {/* center: shutter with pulse + ripple */}
+            {/* center: shutter (disabled while waiting for preview) */}
             <Pressable
               onPress={takePhoto}
-              style={{ alignItems: "center", justifyContent: "center" }}
+              disabled={shutterLocked || slots.every(Boolean)}
+              style={{
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: shutterLocked || slots.every(Boolean) ? 0.6 : 1,
+              }}
             >
               {/* ripple ring */}
               <Animated.View
@@ -654,7 +711,7 @@ export default function CameraScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: "#000" }, // ← was missing
   bracketArea: { position: "absolute" },
   corner: {
     position: "absolute",
