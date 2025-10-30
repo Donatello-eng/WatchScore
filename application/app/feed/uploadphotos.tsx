@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   Pressable,
   StatusBar,
   Platform,
+  Animated,
+  Easing,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -18,9 +20,169 @@ import { Font } from "../../hooks/fonts";
 import { router } from "expo-router";
 import { triggerHaptic } from "../../hooks/haptics";
 
+const ABS_FILL: any = StyleSheet.absoluteFillObject;
+
+/**
+ * Three animations per image:
+ * 1) Intro fade + scale (duration configurable via introMs)
+ * 2) Idle float + micro tilt (loop)
+ * 3) Press bounce (on tap)
+ *
+ * Includes a reset so changing introMs/staggerMs reliably replays the intro.
+ */
+function useImageAnimations(staggerMs = 0, introMs = 1100) {
+  // 1) Intro (fade + scale)
+  const introOpacity = useRef(new Animated.Value(0)).current;
+  const introScale = useRef(new Animated.Value(0.9)).current;
+
+  // 2) Idle loop (float + tilt)
+  const floatDriver = useRef(new Animated.Value(0)).current; // 0..1..0
+  const tiltDriver = useRef(new Animated.Value(0)).current; // 0..1..0
+
+  // 3) Press bounce
+  const pressScale = useRef(new Animated.Value(1)).current;
+
+  const animatedStyle = useMemo(() => {
+    const translateY = floatDriver.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, -6],
+    });
+
+    const rotate = tiltDriver.interpolate({
+      inputRange: [0, 1],
+      outputRange: ["-2deg", "2deg"],
+    });
+
+    return {
+      opacity: introOpacity,
+      transform: [
+        { scale: introScale }, // intro
+        { scale: pressScale }, // press
+        { translateY }, // idle float
+        { rotate }, // idle tilt
+      ],
+    };
+  }, [floatDriver, tiltDriver, introOpacity, introScale, pressScale]);
+
+  useEffect(() => {
+    // ---- Reset values so the intro reliably replays when props change ----
+    introOpacity.stopAnimation();
+    introScale.stopAnimation();
+    floatDriver.stopAnimation();
+    tiltDriver.stopAnimation();
+    pressScale.stopAnimation();
+
+    introOpacity.setValue(0);
+    introScale.setValue(0.9);
+    // (idle drivers start from 0 automatically)
+
+    // Slower, smoother reveal (fade + scale)
+    const intro = Animated.parallel([
+      Animated.timing(introOpacity, {
+        toValue: 1,
+        duration: introMs, // increase for slower intro
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+        delay: staggerMs,
+      }),
+      Animated.timing(introScale, {
+        toValue: 1,
+        duration: introMs,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+        delay: staggerMs,
+      }),
+    ]);
+
+    // Idle float loop
+    const floatLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatDriver, {
+          toValue: 1,
+          duration: 2200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatDriver, {
+          toValue: 0,
+          duration: 2200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    // Idle tilt loop (offset start for organic feel)
+    const tiltLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(tiltDriver, {
+          toValue: 1,
+          duration: 1800,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(tiltDriver, {
+          toValue: 0,
+          duration: 1800,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    intro.start(() => {
+      floatLoop.start();
+      setTimeout(() => tiltLoop.start(), 250);
+    });
+
+    return () => {
+      intro.stop();
+      floatLoop.stop();
+      tiltLoop.stop();
+    };
+  }, [
+    introOpacity,
+    introScale,
+    floatDriver,
+    tiltDriver,
+    pressScale,
+    staggerMs,
+    introMs,
+  ]);
+
+  const onPress = () => {
+    triggerHaptic("impactLight");
+    Animated.sequence([
+      Animated.timing(pressScale, {
+        toValue: 0.965,
+        duration: 80,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.spring(pressScale, {
+        toValue: 1,
+        damping: 12,
+        stiffness: 200,
+        mass: 0.6,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  return { animatedStyle, onPress };
+}
+
 export default function UploadPhotos() {
   const insets = useSafeAreaInsets();
   const { scale, vw, vh } = useR();
+
+  // Set a clearly slower intro for testing (e.g., 4000ms)
+  const INTRO_MS = 1500;
+
+  // Slightly larger stagger for a calm cascade
+  const frontAnim = useImageAnimations(0, INTRO_MS);
+  const backAnim = useImageAnimations(200, INTRO_MS);
+  const sideAnim = useImageAnimations(400, INTRO_MS);
 
   return (
     <View style={styles.root}>
@@ -41,10 +203,7 @@ export default function UploadPhotos() {
       <SafeAreaView
         style={[
           styles.safe,
-          {
-            paddingTop: insets.top, // prevents “push down” after mount
-            paddingBottom: insets.bottom, // keeps bottom button stable too
-          },
+          { paddingTop: insets.top, paddingBottom: insets.bottom },
         ]}
         edges={["left", "right"]}
       >
@@ -80,52 +239,68 @@ export default function UploadPhotos() {
         {/* Collage zone */}
         <View>
           {/* Front */}
-          <View
+          <Pressable
+            onPress={frontAnim.onPress}
             style={[
               styles.cardWrap,
-              { width: vw(43), height: vw(43), left: vw(15), top: vh(5) },
+              { width: vw(49), height: vw(49), left: vw(10), top: vh(5) },
             ]}
           >
-            <Image
-              source={require("../../assets/images/front.webp")}
-              style={{
-                width: "100%",
-                height: "100%",
-              }}
-              resizeMode="contain"
-            />
-          </View>
+            {/* Optional: force remount if you tweak timings during dev */}
+            {/* <Animated.View key={`front-0-${INTRO_MS}`} ... /> */}
+            <Animated.View
+              style={[ABS_FILL, styles.cardShadow, frontAnim.animatedStyle]}
+              pointerEvents="none"
+            >
+              <Image
+                source={require("../../assets/images/front.webp")}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="contain"
+              />
+            </Animated.View>
+          </Pressable>
 
           {/* Caseback */}
-          <View
+          <Pressable
+            onPress={backAnim.onPress}
             style={[
               styles.cardWrap,
-              { width: vw(43), height: vw(43), right: vw(6), top: vh(16) },
+              { width: vw(49), height: vw(49), right: vw(0), top: vh(16) },
             ]}
           >
-            <Image
-              source={require("../../assets/images/caseback.webp")}
-              style={{ width: "100%", height: "100%" }}
-              resizeMode="contain"
-            />
-          </View>
+            {/* <Animated.View key={`back-200-${INTRO_MS}`} ... /> */}
+            <Animated.View
+              style={[ABS_FILL, styles.cardShadow, backAnim.animatedStyle]}
+              pointerEvents="none"
+            >
+              <Image
+                source={require("../../assets/images/caseback.webp")}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="contain"
+              />
+            </Animated.View>
+          </Pressable>
 
           {/* Side */}
-          <View
+          <Pressable
+            onPress={sideAnim.onPress}
             style={[
               styles.cardWrap,
-              { width: vw(54), height: vw(54), right: vw(37), top: vh(24) },
+              { width: vw(60), height: vw(60), right: vw(37), top: vh(27) },
             ]}
           >
-            <Image
-              source={require("../../assets/images/side.webp")}
-              style={{
-                width: "100%",
-                height: "100%",
-              }}
-              resizeMode="contain"
-            />
-          </View>
+            {/* <Animated.View key={`side-400-${INTRO_MS}`} ... /> */}
+            <Animated.View
+              style={[ABS_FILL, styles.cardShadow, sideAnim.animatedStyle]}
+              pointerEvents="none"
+            >
+              <Image
+                source={require("../../assets/images/side.webp")}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="contain"
+              />
+            </Animated.View>
+          </Pressable>
         </View>
 
         {/* Begin button */}
@@ -180,6 +355,18 @@ const styles = StyleSheet.create({
 
   cardWrap: {
     position: "absolute",
+  },
+
+  // Subtle lift that complements the motion
+  cardShadow: {
+    ...(Platform.OS === "ios"
+      ? {
+          shadowColor: "#000",
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 4 },
+        }
+      : { elevation: 4 }),
   },
 
   beginBtn: {

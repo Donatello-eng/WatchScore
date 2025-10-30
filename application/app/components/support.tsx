@@ -10,6 +10,7 @@ import {
   View,
   StatusBar,
   Platform,
+  Image,
 } from "react-native";
 import { useR } from "../../hooks/useR";
 import { LinearGradient } from "expo-linear-gradient";
@@ -61,15 +62,20 @@ export default function SupportScreen() {
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
+
+      {/* Back chevron */}
       <Pressable
+        hitSlop={12}
         onPress={() => {
           triggerHaptic("impactMedium");
           router.back();
         }}
-        style={[styles.back, backPos]}
-        hitSlop={scale(10)}
+        style={styles.backBtn}
       >
-        <Ionicons name="chevron-back" size={iconSize} color={UI.text} />
+        <Image
+          source={require("../../assets/images/chevron-left.webp")}
+          style={styles.backIcon}
+        />
       </Pressable>
 
       <View style={[styles.container, containerPad]}>
@@ -167,5 +173,16 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     textAlign: "center",
     opacity: 1,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    marginTop: 15,
+    marginLeft: 20,
+  },
+  backIcon: {
+    width: 40,
+    height: 40,
+    tintColor: "#3A3A3A",
   },
 });

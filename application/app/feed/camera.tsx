@@ -7,6 +7,8 @@ import {
   Pressable,
   StyleSheet,
   StyleSheet as RNStyleSheet,
+  Animated,
+  Easing,
 } from "react-native";
 import {
   SafeAreaView,
@@ -28,6 +30,7 @@ import {
 import * as ImageManipulator from "expo-image-manipulator";
 import DotsEllipsis from "@/components/loading/DotsEllipsis";
 import { triggerHaptic } from "hooks/haptics";
+import PermissionRequired from "../components/permissionRequired";
 
 const MAX_EDGE = 1600;
 const WEBP_QUALITY = 0.75;
@@ -85,7 +88,6 @@ export async function shrinkAndNormalize(uri: string, maxEdge = MAX_EDGE) {
 }
 
 export default function CameraScreen() {
-
   const { scale, vw, vh } = useR();
 
   const insets = useSafeAreaInsets();
@@ -96,7 +98,97 @@ export default function CameraScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [slots, setSlots] = useState<Array<string | null>>([null, null, null]);
 
-  useEffect(() => () => { mounted.current = false; }, []);
+  // --- SHUTTER FX ANIMATIONS ---
+  const flashOpacity = useRef(new Animated.Value(0)).current; // white flash
+  const camScale = useRef(new Animated.Value(1)).current; // camera zoom-pop
+  const shutterScale = useRef(new Animated.Value(1)).current; // shutter button pulse
+  const rippleScale = useRef(new Animated.Value(0.7)).current; // ring ripple
+  const rippleOpacity = useRef(new Animated.Value(0)).current; // ring ripple
+
+  const playShutterFX = () => {
+    // haptic tap
+    triggerHaptic("impactLight");
+
+    // flash: 0 -> 1 very fast, then fade out
+    const flashIn = Animated.timing(flashOpacity, {
+      toValue: 1,
+      duration: 0,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    });
+    const flashOut = Animated.timing(flashOpacity, {
+      toValue: 0,
+      duration: 60,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: true,
+    });
+
+    // camera scale pop
+    const camIn = Animated.timing(camScale, {
+      toValue: 0.985,
+      duration: 80,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    });
+    const camOut = Animated.timing(camScale, {
+      toValue: 1,
+      duration: 180,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    });
+
+    // shutter pulse
+    const shutterIn = Animated.timing(shutterScale, {
+      toValue: 0.94,
+      duration: 80,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    });
+    const shutterOut = Animated.spring(shutterScale, {
+      toValue: 1,
+      damping: 10,
+      stiffness: 180,
+      mass: 0.7,
+      useNativeDriver: true,
+    });
+
+    // ripple (starts faint, expands & fades)
+    rippleScale.setValue(0.7);
+    rippleOpacity.setValue(0.18);
+    const rippleAnim = Animated.parallel([
+      Animated.timing(rippleScale, {
+        toValue: 1.4,
+        duration: 420,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(rippleOpacity, {
+        toValue: 0,
+        duration: 420,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]);
+
+    // run them together (with slight overlaps for a snappy feel)
+    Animated.parallel([
+      Animated.sequence([flashIn, flashOut]),
+      Animated.sequence([camIn, camOut]),
+      Animated.sequence([shutterIn, shutterOut]),
+      rippleAnim,
+    ]).start();
+  };
+  // --- END FX ---
+
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    []
+  );
+
+  // (Optional) If this auto-requests, it can consume the only prompt opportunity.
+  // Consider removing if you want the prompt only when the user taps.
   useEffect(() => {
     if (!permission?.granted) requestPermission();
   }, [permission]);
@@ -105,47 +197,30 @@ export default function CameraScreen() {
 
   if (!permission.granted) {
     return (
-      <SafeAreaView
-        style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
-      >
-        <Text style={{ fontFamily: Font.inter.medium, marginBottom: 12 }}>
-          Camera permission required
-        </Text>
-
-        <Pressable
-          onPress={async () => {
-            try {
-              const res = await requestPermission();
-              // res: { granted: boolean; canAskAgain: boolean; status: PermissionStatus; ... }
-              if (
-                !res?.granted &&
-                res &&
-                "canAskAgain" in res &&
-                !res.canAskAgain
-              ) {
-                // User selected "Don’t ask again" previously → open Settings
-                await Linking.openSettings();
-              }
-            } catch (e) {
-              console.warn("requestPermission error", e);
-            }
-          }}
-          style={{ padding: 12 }}
-        >
-          <Text style={{ color: "#2E39FF", fontFamily: Font.inter.semiBold }}>
-            Grant
-          </Text>
-        </Pressable>
-      </SafeAreaView>
+      <PermissionRequired
+        canAskAgain={permission.canAskAgain}
+        onRequestPermission={async () => {
+          const res = await requestPermission();
+          return {
+            granted: !!res?.granted,
+            canAskAgain:
+              typeof res?.canAskAgain === "boolean"
+                ? res.canAskAgain
+                : permission.canAskAgain,
+          };
+        }}
+      />
     );
   }
 
   const takePhoto = async () => {
     try {
+      // Kick off the visual FX immediately
+      playShutterFX();
+
       const res: any = await camRef.current?.takePictureAsync({
-        // Keep capture quick; we’ll do real compression below
         quality: 1,
-        skipProcessing: true, // fastest; we normalize via ImageManipulator
+        skipProcessing: true,
         shutterSound: false,
       });
 
@@ -158,7 +233,7 @@ export default function CameraScreen() {
         const i = prev.findIndex((s) => s === null);
         if (i === -1) return prev;
         const next = [...prev];
-        next[i] = smallUri; // store the compressed URI
+        next[i] = smallUri;
         return next;
       });
     } catch (e) {
@@ -172,6 +247,7 @@ export default function CameraScreen() {
       next[index] = null;
       return next;
     });
+
   const CORNER = {
     size: scale(100),
     radius: scale(48),
@@ -226,12 +302,30 @@ const pickFromGallery = async () => {
 
   return (
     <View style={styles.root}>
-      <CameraView
-        ref={camRef}
-        style={RNStyleSheet.absoluteFill}
-        facing="back"
-        animateShutter={false}
+      {/* Wrap the CameraView in an Animated container to apply the scale pop */}
+      <Animated.View
+        style={[
+          RNStyleSheet.absoluteFill,
+          { transform: [{ scale: camScale }] },
+        ]}
+      >
+        <CameraView
+          ref={camRef}
+          style={RNStyleSheet.absoluteFill}
+          facing="back"
+          animateShutter={false} // we do our own
+        />
+      </Animated.View>
+
+      {/* White flash overlay */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          RNStyleSheet.absoluteFill,
+          { backgroundColor: "#FFFFFF", opacity: flashOpacity },
+        ]}
       />
+
       {/* Back chevron */}
       <SafeAreaView style={RNStyleSheet.absoluteFill} pointerEvents="box-none">
         <Pressable
@@ -248,6 +342,8 @@ const pickFromGallery = async () => {
           />
         </Pressable>
       </SafeAreaView>
+
+      {/* Brackets */}
       <View
         style={[
           styles.bracketArea,
@@ -286,8 +382,8 @@ const pickFromGallery = async () => {
           ]}
         />
       </View>
-      {/* Thumbnails row (exactly 3 slots) */}
-      {/* Bottom cluster: thumbnails ABOVE pill, both move together */}
+
+      {/* Bottom cluster */}
       <View
         style={{
           position: "absolute",
@@ -299,14 +395,14 @@ const pickFromGallery = async () => {
         }}
         pointerEvents={submitting ? "none" : "auto"}
       >
-        {/* Thumbnails (centered) */}
+        {/* Thumbnails */}
         <View
           style={{
             flexDirection: "row",
             justifyContent: "center",
             alignItems: "center",
             gap: scale(14),
-            marginBottom: vh(2), // <= constant gap to the pill
+            marginBottom: vh(2),
           }}
         >
           {slots.map((uri, idx) => (
@@ -430,11 +526,33 @@ const pickFromGallery = async () => {
               </Text>
             </Pressable>
 
-            {/* center: shutter AS AN IMAGE */}
-            <Pressable onPress={takePhoto}>
-              <Image
+            {/* center: shutter with pulse + ripple */}
+            <Pressable
+              onPress={takePhoto}
+              style={{ alignItems: "center", justifyContent: "center" }}
+            >
+              {/* ripple ring */}
+              <Animated.View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  width: scale(92),
+                  height: scale(92),
+                  borderRadius: scale(46),
+                  borderWidth: 2,
+                  borderColor: "rgba(255,255,255,0.5)",
+                  transform: [{ scale: rippleScale }],
+                  opacity: rippleOpacity,
+                }}
+              />
+              {/* shutter image (pulses) */}
+              <Animated.Image
                 source={require("../../assets/images/shutter.webp")}
-                style={{ width: scale(74), height: scale(74) }}
+                style={{
+                  width: scale(74),
+                  height: scale(74),
+                  transform: [{ scale: shutterScale }],
+                }}
                 resizeMode="contain"
               />
             </Pressable>
@@ -450,28 +568,37 @@ const pickFromGallery = async () => {
                 const imgs = (slots.filter(Boolean) as string[]).slice(0, 3);
                 if (imgs.length === 0) return;
 
-                const processed = await Promise.all(imgs.map((u) => shrinkAndNormalize(u)));
+                const processed = await Promise.all(
+                  imgs.map((u) => shrinkAndNormalize(u))
+                );
                 const contentTypes = processed.map((p) => p.mime);
-                const { watchId, uploads } = await initWatchPresign(processed.length, contentTypes);
+                const { watchId, uploads } = await initWatchPresign(
+                  processed.length,
+                  contentTypes
+                );
 
                 for (let i = 0; i < processed.length; i++) {
-                  await putToS3(uploads[i].uploadUrl, processed[i].uri, uploads[i].headers);
+                  await putToS3(
+                    uploads[i].uploadUrl,
+                    processed[i].uri,
+                    uploads[i].headers
+                  );
                 }
 
-                await finalizeWatch(watchId, uploads.map(u => u.key));
+                await finalizeWatch(
+                  watchId,
+                  uploads.map((u) => u.key)
+                );
 
-                // navigate
                 router.push({
                   pathname: "/feed/analyzing",
                   params: { id: String(watchId) },
                 });
               } catch (e: any) {
                 console.warn("direct S3 flow failed:", e?.message || e);
-                // allow retry
                 if (mounted.current) setSubmitting(false);
                 return;
               }
-              // if we got here and navigated, component likely unmounts soon; guard anyway
               if (mounted.current) setSubmitting(false);
             }}
             style={{
@@ -484,7 +611,13 @@ const pickFromGallery = async () => {
             }}
           >
             {submitting ? (
-              <DotsEllipsis running dotSize={12} gap={6} color="#FFFFFF" duration={900} />
+              <DotsEllipsis
+                running
+                dotSize={12}
+                gap={6}
+                color="#FFFFFF"
+                duration={900}
+              />
             ) : (
               <>
                 <Text
