@@ -34,9 +34,10 @@ import { toMaintenanceRisksDTO } from "@/dto/toMaintenanceRisksDTO";
 import { toValueMoneyDTO } from "@/dto/toValueMoneyDTO";
 import { toAlternativesDTO } from "@/dto/toAlternativesDTO";
 import { ServerWatch, WatchAI } from "@/types/watch";
+import { API_BASE } from "@/config/api";
+import { authHeaders } from "@/auth/session";
+import { apiFetch } from "@/api/http";
 
-//const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
-const API_BASE = "https://api.watchscore.bump.games";
 
 function decodeJsonParam<T = unknown>(v?: string | string[] | null): T | null {
   const raw = Array.isArray(v) ? v[0] : v;
@@ -154,10 +155,10 @@ export default function WatchDetails() {
     if (ms.includes("overall")) return ["overall", ...ms.filter(s => s !== "overall")];
     return ms;
   }, [ai]);
+  const stopRef = useRef<null | (() => void)>(null);
 
   useEffect(() => {
     if (!record?.id) return;
-
     if (missingSections.length === 0) return;
 
     const runKey = `${record.id}:${missingSections.join(",")}`;
@@ -165,46 +166,44 @@ export default function WatchDetails() {
 
     sseStartedRef.current = true;
     lastRunKeyRef.current = runKey;
-
-    // Track exactly what we asked for in THIS run
     requestedSectionsRef.current = new Set(missingSections);
 
     let cancelled = false;
-    const url = `${API_BASE}/watches/${record.id}/analyze-stream?wait=1&timeout=45`;
+    let stop: null | (() => void) = null;
 
-    const stop = openAnalysisStreamXHR(url, ({ event, data }) => {
-      if (cancelled) return;
+    (async () => {
+      const headers = await authHeaders(API_BASE);
+      const url =
+        `${API_BASE}/watches/${record.id}/analyze-stream` +
+        `?wait=1&timeout=45&sections=${encodeURIComponent(missingSections.join(","))}`;
 
-      if (event === "section" && data?.section) {
-        const sec: string = data.section;
-        // Safety: ignore sections we didn't ask for in this run
-        if (!requestedSectionsRef.current.has(sec)) return;
+      stop = openAnalysisStreamXHR(url, ({ event, data }) => {
+        if (cancelled) return;
+        if (event === "section" && data?.section) {
+          const sec: string = data.section;
+          if (!requestedSectionsRef.current.has(sec)) return;
 
-        const rawPayload = data.data?.[sec] ?? data.data;
+          const rawPayload = data.data?.[sec] ?? data.data;
+          const ok = rawPayload && typeof rawPayload === "object" &&
+            (sec !== "overall" || ("conclusion" in rawPayload && "score" in rawPayload));
+          if (!ok) return;
 
-        // Optional: shape guard so empty/invalid payloads don’t clobber good data
-        const ok =
-          rawPayload &&
-          typeof rawPayload === "object" &&
-          (sec !== "overall" || ("conclusion" in rawPayload && "score" in rawPayload));
+          setAi(prev => (isFilled((prev as any)?.[sec]) ? prev : { ...(prev || {}), [sec]: rawPayload }));
+        } else if (event === "done") {
+          sseStartedRef.current = false;
+        }
+      }, { headers });
 
-        if (!ok) return;
-
-        setAi(prev => {
-          if (isFilled((prev as any)?.[sec])) return prev;
-          return { ...(prev || {}), [sec]: rawPayload };
-        });
-      } else if (event === "done") {
-        sseStartedRef.current = false;
-      }
-    });
+      stopRef.current = stop;
+    })();
 
     return () => {
       cancelled = true;
-      try { stop(); } catch { }
+      try { stop?.(); } catch { }
       sseStartedRef.current = false;
+      stopRef.current = null;
     };
-  }, [record?.id, API_BASE, missingSections.join(",")]);
+  }, [record?.id, missingSections.join(",")]);
 
   function logJson(tag: string, obj: unknown, max = 2000) {
     try {
@@ -258,8 +257,8 @@ export default function WatchDetails() {
       (async () => {
         try {
           setLoading(true);
-          const url = `${API_BASE}/watches/${id}`;
-          const json = (await fetchJsonVerbose(url)) as ServerWatch;
+          const res = await apiFetch(`/watches/${id}`);
+          const json = (await res.json()) as ServerWatch;
           if (!cancelled) {
             logJson("[WatchDetails] FETCHED RECORD", json);
             setRecord(json);
@@ -306,6 +305,7 @@ export default function WatchDetails() {
       </View>
     );
   }
+
   const CARD_MARGIN_H = vw(8);
   const CARD_PADDING = scale(14);
   const CARD_RADIUS = scale(30);
@@ -335,7 +335,7 @@ export default function WatchDetails() {
           showsVerticalScrollIndicator={false}
         >
           {/* Back */}
-          <Pressable hitSlop={12} onPress={() => router.push("/feed/history")} style={styles.backBtn}>
+          <Pressable hitSlop={12} onPress={() => router.push("/feed/scanhistory")} style={styles.backBtn}>
             <Image source={require("../../assets/images/chevron-left.webp")} style={styles.backIcon} />
           </Pressable>
 

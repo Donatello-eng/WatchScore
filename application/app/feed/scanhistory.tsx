@@ -1,0 +1,402 @@
+// src/screens/ScanHistory.tsx
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+    View, Text, StyleSheet, Image, Pressable, StatusBar,
+    FlatList, ActivityIndicator,
+    Platform
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useR } from "../../hooks/useR";
+import { Font } from "../../hooks/fonts";
+import { router } from "expo-router";
+import { triggerHaptic } from "../../hooks/haptics";
+import { apiFetch } from "../../src/api/http";
+import { useFocusEffect } from "expo-router";
+
+import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+
+// --- minimal types used here ---
+type Money = { amount?: number | null; currency?: string | null };
+type WatchScore = { letter?: string; numeric?: number | null };
+type WatchRow = {
+    id: number;
+    thumb?: string | null;
+    // optional AI bits; show placeholders if missing
+    name?: string | null;
+    year?: number | null;
+    score?: WatchScore | null;
+    price?: Money | null;
+    status?: string;
+};
+
+
+function parseSSEOnce(raw: string): Array<{ event: string; data: any }> {
+    // Split by blank lines to get frames; each frame has lines "event:" and "data:"
+    return raw
+        .split(/\n\n+/)
+        .map((block) => block.trim())
+        .filter(Boolean)
+        .map((block) => {
+            const lines = block.split(/\n/);
+            const ev = lines.find((l) => l.startsWith("event:"))?.slice(6).trim() ?? "";
+            const dataLine = lines
+                .filter((l) => l.startsWith("data:"))
+                .map((l) => l.slice(5).trim())
+                .join(""); // in case data is split across lines
+            let data: any = null;
+            if (dataLine) {
+                try { data = JSON.parse(dataLine); } catch { /* ignore */ }
+            }
+            return { event: ev, data };
+        });
+}
+
+async function getBasicsFromStream(id: number): Promise<{
+    name: string | null;
+    year: number | null;
+    score: WatchScore | null;
+    price: Money | null;
+}> {
+    const url = `/watches/${id}/analyze-stream?sections=quick_facts,overall,value_for_money&wait=0&timeout=1`;
+    const res = await apiFetch(url);
+    const text = await res.text();
+
+    let name: string | null = null;
+    let year: number | null = null;
+    let score: WatchScore | null = null;
+    let price: Money | null = null;
+
+    for (const frame of parseSSEOnce(text)) {
+        if (frame.event !== "section" || !frame.data) continue;
+        const obj = frame.data.data || {};
+        const key = Object.keys(obj)[0]; // "quick_facts" | "overall" | "value_for_money"
+        const sec = obj[key];
+
+        if (key === "quick_facts") {
+            name = sec?.name ?? name;
+            year = (sec?.release_year ?? null) as number | null;
+            price = price ?? (sec?.list_price ?? null);
+        } else if (key === "overall") {
+            score = sec?.score ?? score;
+        } else if (key === "value_for_money") {
+            price = sec?.list_price ?? price;
+        }
+    }
+
+    return { name, year, score, price };
+}
+
+function Thumb({ uri, size }: { uri?: string | null; size: number }) {
+    return uri ? (
+        <Image
+            source={{ uri }}
+            style={{ width: size, height: size, borderRadius: size * 0.22 }}
+            resizeMode="cover"
+        />
+    ) : (
+        <View
+            style={{
+                width: size,
+                height: size,
+                borderRadius: size * 0.22,
+                backgroundColor: "rgba(0,0,0,0.06)",
+                alignItems: "center",
+                justifyContent: "center",
+            }}
+        >
+            <Ionicons name="watch-outline" size={Math.round(size * 0.44)} color="#9AA1AE" />
+        </View>
+    );
+}
+
+export default function ScanHistory() {
+    const insets = useSafeAreaInsets();
+    const { scale, vw, vh } = useR();        // call once
+    const s = scale;
+    const EXTRA_TOP = s(55);
+
+    const [active, setActive] = useState<"camera" | "collection">("collection");
+    const [rows, setRows] = useState<WatchRow[] | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            // 1) list for ids + thumbs (unchanged)
+            const listRes = await apiFetch(`/watches`);
+            const list = (await listRes.json()) as {
+                items: Array<{ id: number; photos?: { url?: string | null }[] }>;
+                nextCursor?: number | null;
+            };
+
+            const basics = list.items.map((it) => ({
+                id: it.id,
+                thumb: it.photos?.[0]?.url ?? null,
+            }));
+
+            // 2) fetch minimal AI bits from one-shot SSE (no EventSource, no headers)
+            const details = await Promise.allSettled(
+                basics.map((b) => getBasicsFromStream(b.id))
+            );
+
+            const merged: WatchRow[] = basics.map((b, i) => {
+                const di = details[i];
+                if (di.status !== "fulfilled") return { ...b, name: null, year: null, score: null, price: null };
+                const { name, year, score, price } = di.value;
+                return { id: b.id, thumb: b.thumb, name, year, score, price };
+            });
+
+            setRows(merged);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            load();                 // runs on first mount and every time screen refocuses
+            return () => { };        // no cleanup needed
+        }, [load])
+    );
+
+    // ---------- small formatters ----------
+    const fmtPrice = (m?: Money | null) => {
+        if (!m || m.amount == null || !m.currency) return "—";
+        const amt = Math.round(Number(m.amount));
+        return `${amt.toLocaleString()} ${m.currency}`;
+    };
+    const fmtScore = (s?: WatchScore | null) =>
+        s?.letter ? `${s.letter}${s.numeric != null ? ` ${s.numeric}` : ""}` : "—";
+
+    // ---------- card ----------
+    const Card = ({ item }: { item: WatchRow }) => (
+        <Pressable
+            onPress={() => {
+                triggerHaptic("impactLight");
+                router.push({ pathname: "/feed/watch-details", params: { id: String(item.id) } });
+            }}
+            style={[styles.card, { padding: s(14), borderRadius: s(28) }]}
+        >
+            {/* thumb */}
+            <Thumb uri={item.thumb} size={s(82)} />
+
+            {/* text + pills */}
+            <View style={{ flex: 1 }}>
+                <Text
+                    numberOfLines={2}
+                    style={{ fontSize: s(18), fontFamily: Font.inter.extraBold, color: "#0F172A" }}
+                >
+                    {item.name ?? "Analyzing…"}
+                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: s(6), gap: s(8) }}>
+                    <Pill text={fmtScore(item.score)} tone={item.score?.letter} />
+                    <Pill text={fmtPrice(item.price)} />
+                    <Pill text={item.year ? String(item.year) : "—"} />
+
+                </View>
+            </View>
+
+            <Ionicons name="chevron-forward" size={s(18)} color="#9AA1AE" />
+        </Pressable>
+    );
+
+    const EmptyState = () => (
+        <>
+            {/* Illustration area (your old design) */}
+            <View style={[styles.illustration, { height: vh(52) }]} pointerEvents="none">
+                <Image
+                    source={require("../../assets/images/lefthand.webp")}
+                    style={[styles.leftHand, { width: vw(45), height: vw(45), bottom: vh(13), left: -vw(0) }]}
+                />
+                <Image
+                    source={require("../../assets/images/righthand.webp")}
+                    resizeMode="contain"
+                    style={[styles.rightHand, { width: vw(90), height: vw(90), bottom: vh(0), right: -vw(22) }]}
+                />
+            </View>
+            <Text style={[styles.ooops, { fontSize: s(16), marginTop: vh(0) }]}>
+                {"Ooops…\nThere are no scanned watches"}
+            </Text>
+        </>
+    );
+
+    const HistoryList = ({ data }: { data: WatchRow[] }) => (
+        <FlatList
+            data={data}
+            keyExtractor={(it) => String(it.id)}
+            contentContainerStyle={{ paddingHorizontal: vw(5), paddingBottom: insets.bottom + s(84), paddingTop: s(16), gap: s(12) }}
+            renderItem={({ item }) => <Card item={item} />}
+            showsVerticalScrollIndicator={false}
+        />
+    );
+
+    // ---------- UI ----------
+    const showEmpty = !loading && (!rows || rows.length === 0);
+    const ICON_SIZE = scale(28);
+
+    const titleStyle = [
+        styles.title,
+        {
+            fontSize: scale(32),
+            lineHeight: scale(32),
+            fontFamily: Font.inter.extraBold,
+            ...(Platform.OS === "android" ? { includeFontPadding: false } : null),
+        },
+    ];
+
+    return (
+        <View style={styles.root}>
+            <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+            <LinearGradient
+                colors={["#FFFFFF", "#F3F1F1", "#F3DCDD", "#E1C7E6"]}
+                start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
+                style={StyleSheet.absoluteFill}
+            />
+
+            <SafeAreaView style={styles.safe} edges={["left", "right"]}>
+                {/* 2) Apply safe top once */}
+                <View style={{ paddingTop: insets.top }}>
+                    {/* 3) Fixed band; header centered vertically inside it */}
+                    <View
+                        style={{
+                            height: EXTRA_TOP,                // e.g., 58 scaled px
+                            justifyContent: "center",         // vertical center
+                            paddingHorizontal: vw(5),
+                        }}
+                    >
+                        <View style={styles.header}>
+                            {/* left spacer to keep title perfectly centered vs right icon */}
+                            <View style={{ width: ICON_SIZE, height: ICON_SIZE }} />
+
+                            <Text numberOfLines={1} style={titleStyle}>
+                                Scan History
+                            </Text>
+
+                            <Pressable
+                                onPress={() => {
+                                    triggerHaptic("impactMedium");
+                                    router.push("/components/support");
+                                }}
+                                hitSlop={scale(8)}
+                                style={{ width: ICON_SIZE, height: ICON_SIZE, alignItems: "center", justifyContent: "center" }}
+                            >
+                                <Image
+                                    source={require("../../assets/images/info.webp")}
+                                    style={{ width: ICON_SIZE, height: ICON_SIZE, tintColor: "#525252" }}
+                                    resizeMode="contain"
+                                />
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Body */}
+                {loading ? (
+                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                        <ActivityIndicator />
+                    </View>
+                ) : showEmpty ? (
+                    <EmptyState />
+                ) : (
+                    <HistoryList data={rows!} />
+                )}
+            </SafeAreaView>
+
+            {/* Bottom pill nav */}
+            <View style={[styles.navPillWrapper, { bottom: insets.bottom + s(12) }]}>
+                {/* Blur sits under the content */}
+                <BlurView tint="light" intensity={20} style={StyleSheet.absoluteFill} />
+
+                {/* Actual content, no opaque bg here */}
+                <View style={styles.navPillContent}>
+                    <Pressable
+                        onPress={() => { triggerHaptic("impactMedium"); setActive("camera"); router.push("/feed/uploadphotos"); }}
+                        style={[styles.navItem, active === "camera" && styles.navItemActive]}
+                        hitSlop={8}
+                    >
+                        <Image source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                        <Text style={[styles.navItemLabel, active === "camera" && styles.navItemLabelActive]}>Camera</Text>
+                    </Pressable>
+
+                    <Pressable
+                        onPress={() => { triggerHaptic("impactMedium"); setActive("collection"); }}
+                        style={[styles.navItem, { paddingHorizontal: 15 }, active === "collection" && styles.navItemActive]}
+                        hitSlop={8}
+                    >
+                        <Image source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                        <Text style={[styles.navItemLabel, active === "collection" && styles.navItemLabelActive, { fontFamily: Font.inter.semiBold, fontSize: 11 }]}>
+                            Collection
+                        </Text>
+                    </Pressable>
+                </View>
+            </View>
+        </View>
+    );
+}
+
+// --- tiny pill ---
+function Pill({ text, tone }: { text: string; tone?: string }) {
+    const bg =
+        tone === "A" || tone === "A+" ? "#D1FADF" :
+            tone === "B" ? "#E2F2FF" :
+                tone === "C" ? "#FFF4CC" :
+                    tone === "D" ? "#FFE2E2" : "rgba(0,0,0,0.06)";
+    return (
+        <View style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: bg }}>
+            <Text style={{ fontFamily: Font.inter.semiBold, color: "#424B5A" }}>{text}</Text>
+        </View>
+    );
+}
+
+const styles = StyleSheet.create({
+    root: { flex: 1 },
+    safe: { flex: 1 },
+    header: { width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    supportBtn: { alignItems: "center", justifyContent: "center" },
+    title: { color: "#525252", letterSpacing: 0.3, textAlign: "center", flexShrink: 1 },
+    illustration: { width: "100%", justifyContent: "flex-end" },
+    leftHand: { position: "absolute" },
+    rightHand: { position: "absolute" },
+    ooops: { color: "#686868", fontFamily: Font.inter.semiBold, textAlign: "center", alignSelf: "center" },
+    navPill: {
+        position: "absolute", alignSelf: "center", alignItems: "center", flexDirection: "row",
+        justifyContent: "space-between", backgroundColor: "rgba(255,255,255,0.5)", paddingVertical: 5,
+        paddingHorizontal: 5, borderRadius: 100,
+    },
+    navItem: { flexDirection: "column", alignItems: "center", justifyContent: "center", paddingVertical: 8, paddingHorizontal: 26, gap: 0 },
+    navItemActive: { backgroundColor: "rgba(255,255,255,0.5)", borderRadius: 100 },
+    navItemLabel: { color: "#2B2B2B", textAlign: "center", fontFamily: Font.inter.semiBold, fontSize: 11 },
+    navItemLabelActive: { color: "#4456A6" },
+    card: {
+        width: "100%",
+        backgroundColor: "rgba(255,255,255,0.85)",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+    },
+    navPillWrapper: {
+        position: "absolute",
+        alignSelf: "center",
+        borderRadius: 100,
+        overflow: "hidden",                       // clip BlurView to pill
+        // subtle milkiness + edge
+        backgroundColor: "rgba(255,255,255,0.10)",
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "rgba(255,255,255,0.35)",
+        // shadow
+        shadowColor: "#000",
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 8,                             // Android shadow
+    },
+    navPillContent: {
+        alignItems: "center",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        paddingVertical: 5,
+        paddingHorizontal: 5,
+    },
+});

@@ -1,11 +1,11 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
+import { apiFetch } from "./http";
 
 // For emulator: http://10.0.2.2:8000
 // For real device: your ngrok HTTPS URL
 
 //const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
-const API_BASE = "https://api.watchscore.bump.games";
 
 type PresignItem = {
   key: string;
@@ -14,9 +14,8 @@ type PresignItem = {
 };
 
 export async function initWatchPresign(count: number, contentTypes: string[]) {
-  const res = await fetch(`${API_BASE}/watches/init`, {
+  const res = await apiFetch(`/watches/init`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ count, contentTypes }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -52,11 +51,10 @@ export async function finalizeWatch(
   keys: string[],
 ) {
   const photos = keys.map((key) => ({ key }));
-  const res = await fetch(`${API_BASE}/watches/${watchId}/finalize`, {
+  const res = await apiFetch(`/watches/${watchId}/finalize`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ photos }),
   });
   if (!res.ok) throw new Error(await res.text());
-  return res.json(); 
+  return res.json();
 }
