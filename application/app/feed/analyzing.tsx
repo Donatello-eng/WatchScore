@@ -13,12 +13,11 @@ import { useLocalSearchParams, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { ServerWatch, WatchAI } from "@/types/watch";
+import { authHeaders } from "@/auth/session";
+import { apiFetch } from "@/api/http";
+import { API_BASE } from "@/config/api";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-
-//const API_BASE = Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://127.0.0.1:8000";
-
-const API_BASE = "https://api.watchscore.bump.games";
 
 
 type SSEFrame = { event?: string; data?: any };
@@ -125,25 +124,25 @@ export default function Analyzing() {
         const wid = Number(id);
         if (!wid) return;
 
-        const url = `${API_BASE}/watches/${wid}/analyze-stream?wait=1&timeout=45` 
-            
-        const stop = openAnalysisStreamXHR(url, ({ event, data }) => {
-            if (event === "section" && data?.section) {
-                const sec: string = data.section;
-                const payload = data.data?.[sec] ?? data.data;
+        let stop: null | (() => void) = null;
 
-                aiRef.current = { ...aiRef.current, [sec]: payload };
-                setAiTick(t => t + 1);
-
-                if (sec === "quick_facts") {
-                    console.log("[Analyzing] quick_facts:", JSON.stringify(aiRef.current.quick_facts).slice(0, 200));
+        (async () => {
+            const headers = await authHeaders(API_BASE); // <-- X-Client-Id + Authorization
+            const url = `${API_BASE}/watches/${wid}/analyze-stream?sections=quick_facts,overall&wait=1&timeout=45`;
+            stop = openAnalysisStreamXHR(url, ({ event, data }) => {
+                if (event === "section" && data?.section) {
+                    const sec: string = data.section;
+                    const payload = data.data?.[sec] ?? data.data;
+                    aiRef.current = { ...aiRef.current, [sec]: payload };
+                    setAiTick(t => t + 1);
                 }
-            }
-        });
+            }, { headers });
+            stopRef.current = stop;
+        })();
 
-        stopRef.current = stop;
-        return () => { stop(); stopRef.current = null; };
+        return () => { if (stop) stop(); stopRef.current = null; };
     }, [id]);
+
 
     useEffect(() => {
         let cancelled = false;
@@ -153,7 +152,7 @@ export default function Analyzing() {
         (async () => {
             try {
                 setLoading(true);
-                const res = await fetch(`${API_BASE}/watches/${wid}`);
+                const res = await apiFetch(`/watches/${wid}`);
                 const json = (await res.json()) as ServerWatch;
                 if (!cancelled) { setRecord(json); setLoading(false); }
             } catch {

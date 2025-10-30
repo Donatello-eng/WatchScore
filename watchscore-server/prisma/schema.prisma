@@ -8,11 +8,6 @@ generator client {
   interface = "asyncio"
 }
 
-enum WatchStatus {
-  processing
-  complete
-  error
-}
 
 model User {
   id         Int       @id @default(autoincrement())
@@ -25,9 +20,9 @@ model User {
 }
 
 model Watch {
-  id             Int           @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   userId         Int?
-  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   name           String?
   subtitle       String?
@@ -37,10 +32,10 @@ model Watch {
   overallLetter  String?
   overallNumeric Int?
 
-  status         WatchStatus   @default(processing) // processing|complete|error
+  status         String   @default("processing")   // "processing" | "complete" | "error"
 
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   photos         Photo[]
   analysis       WatchAnalysis?
@@ -55,15 +50,13 @@ model Photo {
   watchId   Int
   watch     Watch    @relation(fields: [watchId], references: [id], onDelete: Cascade)
 
-  // S3 object key, e.g., "watches/123/photo_1_abc.jpg"
-  key       String?
-
-  // optional; you can omit and presign GET on demand
+  key       String   // required; you always set it
   url       String?
   mime      String?
-  index     Int?
+  index     Int
   createdAt DateTime @default(now())
 
+  @@unique([watchId, index], name: "watchId_index")
   @@index([watchId])
 }
 

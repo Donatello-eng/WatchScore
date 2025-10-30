@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # On Apple Silicon you can omit platforms; this is optional:
+      # platforms: ["linux/arm64"]
+    env_file: [.env]
+    ports:
+      - "127.0.0.1:18000:8000"
+    # hot-reload + live code
+    volumes:
+      - .:/app
+      - devdb:/app/devdb
+    environment:
+      # point Prisma/SQLite to a volume path so reloads don’t reset DB
+      DATABASE_URL: "file:/app/devdb/dev.db"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    command: >
+      sh -lc "
+        python -m prisma generate &&
+        python -m prisma migrate deploy &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+volumes:
+  devdb:

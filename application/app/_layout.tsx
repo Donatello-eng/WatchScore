@@ -15,7 +15,8 @@ import {
 } from "@expo-google-fonts/inter";
 import { K2D_700Bold } from "@expo-google-fonts/k2d";
 
-SplashScreen.preventAutoHideAsync();
+// Call once at module scope; ignore double-calls during Fast Refresh
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -33,19 +34,24 @@ export default function RootLayout() {
   useEffect(() => {
     if (!fontsLoaded) return;
 
-    // TS-friendly: cast to any to access defaultProps
+    // Set a global default font once (survives Fast Refresh)
     const TextAny = RNText as any;
+    if (!TextAny.__patchedFont) {
+      TextAny.defaultProps = TextAny.defaultProps || {};
+      const prev = TextAny.defaultProps.style;
+      TextAny.defaultProps.style = [
+        ...(Array.isArray(prev) ? prev : prev ? [prev] : []),
+        { fontFamily: "Inter_400Regular" },
+      ];
+      TextAny.__patchedFont = true;
+    }
 
-    TextAny.defaultProps = TextAny.defaultProps || {};
-    const prev = TextAny.defaultProps.style;
-    TextAny.defaultProps.style = [
-      ...(Array.isArray(prev) ? prev : prev ? [prev] : []),
-      { fontFamily: "Inter_400Regular" }, // global default
-    ];
-
-    SplashScreen.hideAsync();
+    // Hide after first frame of the initial screen mounts
+    requestAnimationFrame(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    });
   }, [fontsLoaded]);
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded) return null; // keep splash visible
   return <Slot />;
 }

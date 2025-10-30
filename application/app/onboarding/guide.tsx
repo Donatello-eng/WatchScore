@@ -166,7 +166,7 @@ export default function Guide() {
     if (animatingRef.current || w === 0) return;
 
     if (dir > 0 && index >= total - 1) {
-      router.push("/feed/history");
+      router.push("/feed/scanhistory");
       return;
     }
     if (dir < 0 && index <= 0) {

@@ -307,44 +307,40 @@ export default function CameraScreen() {
     borderLeftWidth: CORNER.stroke,
   };
 
-  const pickFromGallery = async () => {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        await Linking.openSettings();
-        return;
-      }
-
-      const mediaImages =
-        (ImagePicker as any).MediaType?.Images ??
-        ImagePicker.MediaTypeOptions.Images;
-
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: mediaImages,
-        allowsEditing: false,
-        quality: 1,
-        selectionLimit: 1,
-        exif: false,
-        base64: false,
-      });
-
-      if (res.canceled) return;
-      const rawUri = res.assets?.[0]?.uri;
-      if (!rawUri) return;
-
-      const { uri: smallUri } = await shrinkAndNormalize(rawUri);
-
-      setSlots((prev) => {
-        const i = prev.findIndex((s) => s === null);
-        const next = [...prev];
-        if (i === -1) next[next.length - 1] = smallUri;
-        else next[i] = smallUri;
-        return next;
-      });
-    } catch (e) {
-      console.warn("pickFromGallery error", e);
+const pickFromGallery = async () => {
+  try {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      await Linking.openSettings();
+      return;
     }
-  };
+
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],        // <- new API
+      allowsEditing: false,
+      quality: 1,                    // pick original; compress after
+    //  allowsMultipleSelection: true, // default false; omit selectionLimit
+      exif: false,
+      base64: false,
+    });
+
+    if (res.canceled) return;
+    const rawUri = res.assets?.[0]?.uri;
+    if (!rawUri) return;
+
+    const { uri: smallUri } = await shrinkAndNormalize(rawUri);
+
+    setSlots((prev) => {
+      const i = prev.findIndex((s) => s === null);
+      const next = [...prev];
+      if (i === -1) next[next.length - 1] = smallUri;
+      else next[i] = smallUri;
+      return next;
+    });
+  } catch (e) {
+    console.warn("pickFromGallery error", e);
+  }
+};
 
   const PILL_HEIGHT = scale(84);
 
