@@ -31,63 +31,6 @@ type WatchRow = {
     status?: string;
 };
 
-
-function parseSSEOnce(raw: string): Array<{ event: string; data: any }> {
-    // Split by blank lines to get frames; each frame has lines "event:" and "data:"
-    return raw
-        .split(/\n\n+/)
-        .map((block) => block.trim())
-        .filter(Boolean)
-        .map((block) => {
-            const lines = block.split(/\n/);
-            const ev = lines.find((l) => l.startsWith("event:"))?.slice(6).trim() ?? "";
-            const dataLine = lines
-                .filter((l) => l.startsWith("data:"))
-                .map((l) => l.slice(5).trim())
-                .join(""); // in case data is split across lines
-            let data: any = null;
-            if (dataLine) {
-                try { data = JSON.parse(dataLine); } catch { /* ignore */ }
-            }
-            return { event: ev, data };
-        });
-}
-
-async function getBasicsFromStream(id: number): Promise<{
-    name: string | null;
-    year: number | null;
-    score: WatchScore | null;
-    price: Money | null;
-}> {
-    const url = `/watches/${id}/analyze-stream?sections=quick_facts,overall,value_for_money&wait=0&timeout=1`;
-    const res = await apiFetch(url);
-    const text = await res.text();
-
-    let name: string | null = null;
-    let year: number | null = null;
-    let score: WatchScore | null = null;
-    let price: Money | null = null;
-
-    for (const frame of parseSSEOnce(text)) {
-        if (frame.event !== "section" || !frame.data) continue;
-        const obj = frame.data.data || {};
-        const key = Object.keys(obj)[0]; // "quick_facts" | "overall" | "value_for_money"
-        const sec = obj[key];
-
-        if (key === "quick_facts") {
-            name = sec?.name ?? name;
-            year = (sec?.release_year ?? null) as number | null;
-            price = price ?? (sec?.list_price ?? null);
-        } else if (key === "overall") {
-            score = sec?.score ?? score;
-        } else if (key === "value_for_money") {
-            price = sec?.list_price ?? price;
-        }
-    }
-
-    return { name, year, score, price };
-}
-
 function Thumb({ uri, size }: { uri?: string | null; size: number }) {
     return uri ? (
         <Image
@@ -111,6 +54,7 @@ function Thumb({ uri, size }: { uri?: string | null; size: number }) {
     );
 }
 
+
 export default function ScanHistory() {
     const insets = useSafeAreaInsets();
     const { scale, vw, vh } = useR();        // call once
@@ -124,31 +68,38 @@ export default function ScanHistory() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            // 1) list for ids + thumbs (unchanged)
+            // 1) list for ids + thumbs + basic AI fields (now provided by backend)
             const listRes = await apiFetch(`/watches`);
             const list = (await listRes.json()) as {
-                items: Array<{ id: number; photos?: { url?: string | null }[] }>;
+                items: Array<{
+                    id: number;
+                    status?: string;
+                    photos?: { url?: string | null }[];
+                    // new fields from /watches
+                    name?: string | null;
+                    year?: number | null;
+                    overallLetter?: string | null;
+                    overallNumeric?: number | null;
+                    price?: { amount?: number | null; currency?: string | null } | null;
+                }>;
                 nextCursor?: number | null;
             };
 
-            const basics = list.items.map((it) => ({
+            const mapped: WatchRow[] = (list.items ?? []).map((it) => ({
                 id: it.id,
                 thumb: it.photos?.[0]?.url ?? null,
+                name: it.name ?? null,
+                year: it.year ?? null,
+                score:
+                    it.overallLetter || it.overallNumeric != null
+                        ? { letter: it.overallLetter ?? undefined, numeric: it.overallNumeric ?? null }
+                        : null,
+                price: it.price ?? null,
+                status: it.status,
             }));
 
-            // 2) fetch minimal AI bits from one-shot SSE (no EventSource, no headers)
-            const details = await Promise.allSettled(
-                basics.map((b) => getBasicsFromStream(b.id))
-            );
-
-            const merged: WatchRow[] = basics.map((b, i) => {
-                const di = details[i];
-                if (di.status !== "fulfilled") return { ...b, name: null, year: null, score: null, price: null };
-                const { name, year, score, price } = di.value;
-                return { id: b.id, thumb: b.thumb, name, year, score, price };
-            });
-
-            setRows(merged);
+            setRows(mapped);
+            // if you want pagination later, keep list.nextCursor in state
         } finally {
             setLoading(false);
         }
@@ -162,11 +113,18 @@ export default function ScanHistory() {
     );
 
     // ---------- small formatters ----------
-    const fmtPrice = (m?: Money | null) => {
+    function fmtPriceCompact(m?: Money | null) {
         if (!m || m.amount == null || !m.currency) return "—";
-        const amt = Math.round(Number(m.amount));
-        return `${amt.toLocaleString()} ${m.currency}`;
-    };
+        const n = Number(m.amount);
+        if (!isFinite(n)) return "—";
+        const abs = Math.abs(n);
+
+        if (abs >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(abs < 10_000_000_000 ? 1 : 0)} B ${m.currency}`;
+        if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(abs < 10_000_000 ? 1 : 0)} M ${m.currency}`;
+        if (abs >= 10_000) return `${Math.round(n / 1_000)} k ${m.currency}`;
+        return `${Math.round(n).toLocaleString()} ${m.currency}`;
+    }
+
     const fmtScore = (s?: WatchScore | null) =>
         s?.letter ? `${s.letter}${s.numeric != null ? ` ${s.numeric}` : ""}` : "—";
 
@@ -192,13 +150,13 @@ export default function ScanHistory() {
                 </Text>
                 <View style={{ flexDirection: "row", alignItems: "center", marginTop: s(6), gap: s(8) }}>
                     <Pill text={fmtScore(item.score)} tone={item.score?.letter} />
-                    <Pill text={fmtPrice(item.price)} />
+                    <Pill text={fmtPriceCompact(item.price)} />
                     <Pill text={item.year ? String(item.year) : "—"} />
 
                 </View>
             </View>
 
-            <Ionicons name="chevron-forward" size={s(18)} color="#9AA1AE" />
+            <Ionicons name="chevron-forward" size={s(18)} color="#909090ff" />
         </Pressable>
     );
 

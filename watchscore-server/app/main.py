@@ -703,26 +703,67 @@ async def analyze_stream(
 # Web application
 # -----------------------------------------------------------------------------
 
+def _extract(w) -> Dict[str, Any]:
+    """Pick name/year/score/price from cached AI JSON if present."""
+    name = None; year = None
+    letter = None; numeric = None
+    price_amt = None; price_cur = None
+    try:
+        obj = json.loads(w.analysis.aiJsonStr) if (w.analysis and w.analysis.aiJsonStr) else {}
+        qf = obj.get("quick_facts") or {}
+        vfm = obj.get("value_for_money") or {}
+        overall = obj.get("overall") or {}
+
+        name = obj.get("name") or qf.get("name")
+        y = qf.get("release_year")
+        year = int(y) if isinstance(y, int) else None
+
+        sc = overall.get("score") or {}
+        letter = sc.get("letter")
+        numeric = sc.get("numeric") if isinstance(sc.get("numeric"), (int, float)) else None
+
+        lp = vfm.get("list_price") or qf.get("list_price") or {}
+        price_amt = lp.get("amount")
+        price_cur = lp.get("currency")
+    except Exception:
+        pass
+    return {
+        "name": name,
+        "year": year,
+        "overallLetter": letter,
+        "overallNumeric": numeric,
+        "price": {"amount": price_amt, "currency": price_cur} if (price_amt is not None or price_cur) else None,
+    }
+
 @app.get("/watches")
 async def list_watches(
     limit: int = Query(20, ge=1, le=100),
     cursor: Optional[int] = Query(None),
     principal: Principal = Depends(auth_principal),
+    x_admin_key: Optional[str] = Header(default=None, alias="x-api-key"),
 ):
-    where = {"userId": principal["user_id"]}
-    order = {"id": "desc"}
+    # Admin override (same secret as /admin/*)
+    is_admin = x_admin_key == os.getenv("ADMIN_API_KEY", "dev-secret")
+
+    # Scope
+    if is_admin:
+        where: Dict[str, Any] = {}
+    else:
+        where = {"userId": principal["user_id"]}
+
     if cursor:
-        where = {"userId": principal["user_id"], "id": {"lt": cursor}}
+        where = {**where, "id": {"lt": cursor}}
 
     rows = await db.watch.find_many(
         where=where,
-        order=order,
+        order={"id": "desc"},
         take=limit + 1,
-        include={"photos": True, "analysis": True},
+        include={"photos": True, "analysis": True},  # we’ll parse analysis JSON below
     )
 
     items: List[Dict[str, Any]] = []
     for w in rows[:limit]:
+        # signed thumbs
         thumbs = []
         for p in w.photos:
             try:
@@ -730,47 +771,51 @@ async def list_watches(
                 thumbs.append({"id": p.id, **({"url": url} if url else {})})
             except Exception:
                 thumbs.append({"id": p.id})
+
         sections = getattr(w.analysis, "sections", 0) if w.analysis else 0
-        items.append({
-            "id": w.id,
+        enrich = _extract(w)
+
+        row = {
+            "id": w.id,   
             "createdAt": w.createdAt.isoformat(),
             "status": w.status,
             "sections": sections,
             "photos": thumbs,
-        })
+            **enrich,
+        }
+        # Optional: include owner for admin consumers
+        if is_admin:
+            row["userId"] = w.userId
+        items.append(row)
+
     next_cursor = rows[-1].id if len(rows) > limit else None
     return {"items": items, "nextCursor": next_cursor}
 
 @app.get("/watches/{watch_id}")
-async def get_watch(
-    watch_id: int,
-    principal: Principal = Depends(auth_principal),
-):
+async def get_watch(watch_id: int):
+    if not (S3_ENABLED and s3 and AWS_S3_BUCKET):
+        raise HTTPException(500, "S3 not configured")
+
     w = await db.watch.find_unique(
         where={"id": watch_id},
-        include={"photos": True, "analysis": True},
+        include={"photos": True},
     )
-    if not w or w.userId != principal["user_id"]:
+    if not w:
         raise HTTPException(404, "Watch not found")
 
     out = _serialize_watch(w)
-    # refresh URLs
-    out["photos"] = [
-        {**p, **({"url": _presign_get(p.get("key"), expires=60*20)} if p.get("key") else {})}
-        for p in out.get("photos", [])
-    ]
 
-    obj = {}
-    if w.analysis and w.analysis.aiJsonStr:
-        try: obj = json.loads(w.analysis.aiJsonStr)
-        except Exception: obj = {}
+    # Always presign S3 keys for client access
+    signed_photos = []
+    for p in out.get("photos", []):
+        key = p.get("key") or None
+        if key:
+            signed = _presign_get(key, expires=60 * 5)
+            signed_photos.append({**p, "url": signed})
+        else:
+            signed_photos.append({**p})
+    out["photos"] = signed_photos
 
-    out["progress"] = {
-        "sectionsReady": [s for s in SECTIONS if s in obj],
-        "sectionsCount": _section_count(obj),
-        "sectionsTotal": len(SECTIONS),
-        "status": w.status,
-    }
     return out
 
 @app.get("/watches/stream")
@@ -817,6 +862,60 @@ async def reset_session(principal: Principal = Depends(auth_principal)):
     await db.watch.delete_many(where={"userId": principal["user_id"]})
     await db.user.delete(where={"id": principal["user_id"]})
     return {"ok": True}
+
+
+@app.get("/admin/watches/{watch_id}")
+async def admin_get_watch(
+    watch_id: int,
+    x_admin_key: str = Header(alias="x-api-key"),
+):
+    if x_admin_key != os.getenv("ADMIN_API_KEY", "dev-secret"):
+        raise HTTPException(403, "Forbidden")
+
+    # Load watch + relations (owner-independent)
+    w = await db.watch.find_unique(
+        where={"id": watch_id},
+        include={"photos": True, "analysis": True},
+    )
+    if not w:
+        raise HTTPException(404, "Watch not found")
+
+    out = _serialize_watch(w)
+
+    # Presign S3 URLs
+    out["photos"] = [
+        {
+            **p,
+            **({"url": _presign_get(p.get("key"), expires=60 * 20)} if p.get("key") else {}),
+        }
+        for p in out.get("photos", [])
+    ]
+
+    # Parse AI snapshot (if any)
+    ai_obj: Dict[str, Any] = {}
+    if w.analysis and getattr(w.analysis, "aiJsonStr", None):
+        try:
+            ai_obj = json.loads(w.analysis.aiJsonStr or "{}")
+        except Exception:
+            ai_obj = {}
+
+    # Progress/meta for admin
+    out["progress"] = {
+        "sectionsReady": [s for s in SECTIONS if s in ai_obj],
+        "sectionsCount": _section_count(ai_obj),
+        "sectionsTotal": len(SECTIONS),
+        "status": w.status,
+    }
+
+    # Surface common fields (name/year/score/price) like list payload
+    out.update(_extract(w))
+
+    # For admin, include owner
+    out["userId"] = w.userId
+
+    # Include AI snapshot directly
+    out["ai"] = ai_obj
+    return out
 
 @app.delete("/admin/watches/{watch_id}", dependencies=[Depends(require_admin)])
 async def admin_delete_watch(watch_id: int):
