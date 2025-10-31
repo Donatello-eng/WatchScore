@@ -1,5 +1,5 @@
 // app/onboarding/welcome.tsx
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -8,13 +8,14 @@ import {
   Linking,
   StatusBar,
   ColorValue,
+  Animated,
+  Easing,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { Image } from "expo-image";
-import { useWindowDimensions, PixelRatio } from "react-native";
 import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
 import { triggerHaptic } from "../../hooks/haptics";
@@ -32,12 +33,66 @@ const HEADLINE = `Every\nwatch\ntells a\nstory.`;
 
 type TupleColors = readonly [ColorValue, ColorValue, ...ColorValue[]];
 
+// Make an Animated version of Expo Image
+const AnimatedImage = Animated.createAnimatedComponent(Image);
+
 const Welcome: React.FC<Props> = ({
   onGetStarted,
   onOpenTerms,
   onOpenPrivacy,
 }) => {
   const R = useR();
+
+  // --- Floating animations ---
+  const leftProg = useRef(new Animated.Value(0)).current;
+  const rightProg = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Helper to run a yoyo loop
+    const loopYoyo = (val: Animated.Value, duration = 2600, delay = 0) => {
+      const seq = Animated.sequence([
+        Animated.timing(val, {
+          toValue: 1,
+          duration: duration / 2,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+          delay,
+        }),
+        Animated.timing(val, {
+          toValue: 0,
+          duration: duration / 2,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]);
+      // Smooth, infinite float
+      Animated.loop(seq, { resetBeforeIteration: true }).start();
+    };
+
+    // Slightly different tempo/phase so they don't move in sync
+    loopYoyo(leftProg, 2800, 0);
+    loopYoyo(rightProg, 2800, 300);
+  }, [leftProg, rightProg]);
+
+  // Map progress → motion
+  const leftTranslateY = leftProg.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -R.scale(15)], // up to ~10px up
+  });
+  const leftRotate = leftProg.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-2.5deg", "2.5deg"],
+  });
+
+  const rightTranslateY = rightProg.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -R.scale(15)], // slightly smaller float
+  });
+  const rightRotate = rightProg.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["2.5deg", "-2.5deg"], // opposite direction for variety
+  });
+
   // One gradient for the entire phrase
   const SingleGradientHeadline = () => (
     <MaskedView
@@ -46,7 +101,7 @@ const Welcome: React.FC<Props> = ({
           <Text
             style={[
               styles.h1,
-              { fontSize: R.scale(67), lineHeight: R.scale(80) }, // ← responsive type
+              { fontSize: R.scale(67), lineHeight: R.scale(80) },
             ]}
             allowFontScaling={false}
           >
@@ -58,7 +113,6 @@ const Welcome: React.FC<Props> = ({
       <LinearGradient
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
-        // one gradient across all lines
         colors={["#FE2D2D", "#4F1CB4"] as const}
       >
         {/* Invisible text sets the gradient’s draw area */}
@@ -66,7 +120,7 @@ const Welcome: React.FC<Props> = ({
           style={[
             styles.h1,
             styles.h1Invisible,
-            { fontSize: R.scale(67), lineHeight: R.scale(80) }, // ← same here
+            { fontSize: R.scale(67), lineHeight: R.scale(80) },
           ]}
           allowFontScaling={false}
         >
@@ -75,11 +129,10 @@ const Welcome: React.FC<Props> = ({
       </LinearGradient>
     </MaskedView>
   );
+
   const handleGetStarted = () => {
     if (onGetStarted) return onGetStarted();
-    // navigate to next onboarding page or tabs
     router.push({ pathname: "/onboarding/guide", params: { i: "0" } });
-    // change to your next route
   };
 
   const handleOpenTerms = () => {
@@ -108,21 +161,25 @@ const Welcome: React.FC<Props> = ({
         {/* Brand */}
         <Text style={styles.brand}>WatchScore</Text>
 
-        {/* Decorative watches */}
-        <Image
+        {/* Decorative watches with floating animation */}
+        <AnimatedImage
           source={require("../../assets/images/watch-left.webp")}
           style={[
             styles.watchImgLeftBase,
             {
-              width: R.vw(34), // 34% of screen width
-              aspectRatio: 1, // keep square, height auto
-              top: R.vh(12), // 12% from top
-              left: -R.vw(3), // small negative offset scales with width
+              width: R.vw(34),
+              aspectRatio: 1,
+              top: R.vh(12),
+              left: -R.vw(3),
+              transform: [
+                { translateY: leftTranslateY },
+                { rotate: leftRotate },
+              ],
             },
           ]}
         />
 
-        <Image
+        <AnimatedImage
           source={require("../../assets/images/watch-right.webp")}
           style={[
             styles.watchImgRightBase,
@@ -131,7 +188,10 @@ const Welcome: React.FC<Props> = ({
               aspectRatio: 1,
               right: -R.vw(2),
               bottom: R.vh(40),
-              transform: [{ rotate: "19.75deg" }],
+              transform: [
+                { translateY: rightTranslateY },
+                { rotate: rightRotate },
+              ],
             },
           ]}
         />
@@ -208,31 +268,31 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
 
-  // NEW: box that takes remaining space and centers its children
+  // Center stack
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
 
-  // stack the four words with small gaps (no marginTop here)
   headlineWrap: {
-    alignItems: "center", // keep the gradient text blocks centered
+    alignItems: "center",
   },
 
   h1: {
     fontFamily: Font.inter.extraBold,
     letterSpacing: 0,
-    textAlign: "center", // helps on very long words / smaller screens
+    textAlign: "center",
   },
   h1Invisible: {
-    opacity: 0, // invisible copy to size the gradient area
+    opacity: 0,
   },
 
-  // images: make a base style and remove hardcoded width/height/positions
+  // Images
   watchImgLeftBase: { position: "absolute" },
   watchImgRightBase: { position: "absolute" },
 
+  // CTA + legal
   ctaWrap: {
     marginTop: "auto",
     alignItems: "center",
@@ -250,16 +310,14 @@ const styles = StyleSheet.create({
   ctaText: {
     color: "#FFFFFF",
     fontSize: 22,
-    // Inter Regular is global default; make CTA heavier:
-    fontFamily: Font.inter.bold, // "Inter_700Bold"
+    fontFamily: Font.inter.bold,
     letterSpacing: 0.25,
   },
   legalColumn: {
     flexDirection: "column",
     marginTop: 16,
-    alignItems: "center", // use 'flex-start' if you want left-aligned
+    alignItems: "center",
   },
-
   legalIntro: {
     fontSize: 12,
     lineHeight: 16,
@@ -267,8 +325,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontFamily: Font.inter.regular,
   },
-
-  // formerly "legalRow"
   legalLine: {
     marginTop: 4,
     fontSize: 12,
@@ -276,13 +332,11 @@ const styles = StyleSheet.create({
     color: "#5b5b5bff",
     textAlign: "center",
   },
-
   legalLink: {
     color: "#000000ff",
     fontSize: 12,
     fontFamily: Font.inter.regular,
   },
-
   legalAnd: {
     color: "#666",
     marginHorizontal: 6,
