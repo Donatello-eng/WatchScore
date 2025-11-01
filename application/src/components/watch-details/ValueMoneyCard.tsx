@@ -1,9 +1,11 @@
 // ValueMoneyCard.tsx
 import React, { useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View, Pressable } from "react-native";
-import GradeRing from "../../../app/components/gradeRing";
+import GradeRing from "../../../app/components/gradeRing";        // supports `loading`
 import StatTile from "../../../app/components/statTile";
 import InfoOverlay from "app/components/InfoOverlay";
+import DotsEllipsis from "@/components/loading/DotsEllipsis";
+import { StatTileSkeleton } from "../loading/skeletons";
 
 /** helpers */
 function capStart(s?: string | null) {
@@ -53,9 +55,9 @@ export default function ValueMoneyCard({
   cardRadius,
   cardMarginT,
   headerTint = "#C7C7C7",
-  // info overlay
   infoTitle,
   infoText,
+  loading = false,                                        // NEW
 }: {
   dto: ValueMoneyDTO;
   vw: (pct: number) => number;
@@ -69,6 +71,7 @@ export default function ValueMoneyCard({
   headerTint?: string;
   infoTitle?: string;
   infoText?: string;
+  loading?: boolean;                                      // NEW
 }) {
   const S = useMemo(
     () => ({
@@ -83,6 +86,8 @@ export default function ValueMoneyCard({
     [vw, scale, cardMarginH, cardPadding, cardRadius, cardMarginT]
   );
 
+  const isLoading = loading || (dto.scoreLetter === "-" && !dto.scoreNumeric);
+
   const listPrice = fmtMoney({
     raw: dto.listPriceRaw,
     amount: dto.listPriceAmount ?? undefined,
@@ -96,11 +101,15 @@ export default function ValueMoneyCard({
   });
 
   const holdingUnit =
-    dto.holdingNote && dto.holdingNote.trim().length
-      ? ` (${dto.holdingNote})`
-      : "";
+    dto.holdingNote && dto.holdingNote.trim().length ? ` (${dto.holdingNote})` : "";
 
-  // info overlay state
+  // ring + dots sizing
+  const RING_SIZE = 86;
+  const RING_STROKE = 10;
+  const RING_LABEL_FONT_SIZE = 24;
+  const dotSize = Math.max(8, Math.min(RING_SIZE * 0.12, 12));
+  const dotGap = Math.max(4, dotSize * 0.5);
+
   const [showInfo, setShowInfo] = useState(false);
   const defaultInfoTitle = "About Value-for-Money";
   const defaultInfoText =
@@ -125,22 +134,13 @@ export default function ValueMoneyCard({
     >
       {/* Header */}
       <View style={styles.headerRow}>
-        <Text
-          style={[
-            styles.headerText,
-            { fontSize: S.headerSize, fontFamily: titleFontFamily },
-          ]}
-        >
+        <Text style={[styles.headerText, { fontSize: S.headerSize, fontFamily: titleFontFamily }]}>
           Value-for-Money
         </Text>
         <Pressable hitSlop={8} onPress={() => setShowInfo(true)} style={{ marginLeft: scale(6) }}>
           <Image
             source={require("../../../assets/images/info.webp")}
-            style={{
-              width: S.infoSize,
-              height: S.infoSize,
-              tintColor: headerTint,
-            }}
+            style={{ width: S.infoSize, height: S.infoSize, tintColor: headerTint }}
             resizeMode="contain"
           />
         </Pressable>
@@ -149,63 +149,81 @@ export default function ValueMoneyCard({
       {/* Row 1: List Price + Ring */}
       <View style={{ flexDirection: "row", marginTop: scale(12) }}>
         <View style={{ flex: 1, minWidth: 0, marginRight: scale(10) }}>
-          <StatTile
-            style={{ alignSelf: "stretch" }}
-            value={listPrice}
-            icon={require("../../../assets/images/money.webp")}
-            label="List Price"
-            valueSize={26}
-          />
+          {isLoading ? (
+            <StatTileSkeleton style={{ alignSelf: "stretch" }} />
+          ) : (
+            <StatTile
+              style={{ alignSelf: "stretch" }}
+              value={listPrice}
+              icon={require("../../../assets/images/money.webp")}
+              label="List Price"
+              valueSize={26}
+            />
+          )}
         </View>
 
-        <View
-          style={{
-            flex: 1,
-            minWidth: 0,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <GradeRing
-            score={dto.scoreNumeric ?? 0}
-            letter={dto.scoreLetter ?? "-"}
-            baseSize={86}
-            baseStroke={10}
-          />
+        <View style={{ flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center" }}>
+          <View style={{ width: RING_SIZE, height: RING_SIZE, position: "relative" }}>
+            <GradeRing
+              loading={isLoading}                                   // internal 0→100→0 loop
+              score={dto.scoreNumeric ?? 0}
+              letter={isLoading ? "" : (dto.scoreLetter ?? "-")}
+              baseSize={RING_SIZE}
+              baseStroke={RING_STROKE}
+              labelFontSize={RING_LABEL_FONT_SIZE}
+            />
+            {isLoading && (
+              <View
+                pointerEvents="none"
+                style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}
+              >
+                <DotsEllipsis running dotSize={dotSize} gap={dotGap} />
+              </View>
+            )}
+          </View>
         </View>
       </View>
 
       {/* Row 2: Resale Average + Market Liquidity */}
       <View style={{ flexDirection: "row", marginTop: S.gap }}>
-        <StatTile
-          style={{ flex: 1, marginRight: scale(10) }}
-          value={resaleAvg}
-          icon={require("../../../assets/images/resale-average.webp")}
-          label="Resale Average"
-          valueSize={26}
-        />
-        <StatTile
-          style={{ flex: 1 }}
-          value={capStart(dto.marketLiquidity)}
-          icon={require("../../../assets/images/market-liquidity.webp")}
-          label="Market Liquidity"
-        />
+        {isLoading ? (
+          <>
+            <StatTileSkeleton style={{ flex: 1, marginRight: scale(10) }} />
+            <StatTileSkeleton style={{ flex: 1 }} />
+          </>
+        ) : (
+          <>
+            <StatTile
+              style={{ flex: 1, marginRight: scale(10) }}
+              value={resaleAvg}
+              icon={require("../../../assets/images/resale-average.webp")}
+              label="Resale Average"
+              valueSize={26}
+            />
+            <StatTile
+              style={{ flex: 1 }}
+              value={capStart(dto.marketLiquidity)}
+              icon={require("../../../assets/images/market-liquidity.webp")}
+              label="Market Liquidity"
+            />
+          </>
+        )}
       </View>
 
       {/* Row 3: Holding Value */}
       <View style={{ marginTop: S.gap }}>
-        <StatTile
-          style={{ alignSelf: "stretch" }}
-          value={capStart(dto.holdingLabel)}
-          unit={holdingUnit}
-          unitStyle={{
-            fontSize: 13,
-            color: "#45494A",
-            fontFamily: pillBodyFontFamily,
-          }}
-          icon={require("../../../assets/images/service-cost.webp")}
-          label="Holding Value"
-        />
+        {isLoading ? (
+          <StatTileSkeleton style={{ alignSelf: "stretch" }} />
+        ) : (
+          <StatTile
+            style={{ alignSelf: "stretch" }}
+            value={capStart(dto.holdingLabel)}
+            unit={holdingUnit}
+            unitStyle={{ fontSize: 13, color: "#45494A", fontFamily: pillBodyFontFamily }}
+            icon={require("../../../assets/images/service-cost.webp")}
+            label="Holding Value"
+          />
+        )}
       </View>
 
       {/* Row 4: pill with divider (wearer | collector) */}
@@ -221,66 +239,88 @@ export default function ValueMoneyCard({
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           {/* LEFT (wearer) */}
           <View style={{ flex: 1, minWidth: 0, paddingRight: scale(12) }}>
-            <StatTile
-              value={capStart(dto.valueForWearer)}
-              icon={require("../../../assets/images/value-for-wearer.webp")}
-              label="Value for wearer"
-              style={{
-                backgroundColor: "transparent",
-                paddingVertical: 0,
-                paddingHorizontal: 0,
-                borderRadius: 0,
-                minHeight: 0,
-                alignSelf: "stretch",
-              }}
-            />
+            {isLoading ? (
+              <StatTileSkeleton
+                style={{
+                  backgroundColor: "transparent",
+                  paddingVertical: 0,
+                  paddingHorizontal: 0,
+                  borderRadius: 0,
+                  alignSelf: "stretch",
+                }}
+              />
+            ) : (
+              <StatTile
+                value={capStart(dto.valueForWearer)}
+                icon={require("../../../assets/images/value-for-wearer.webp")}
+                label="Value for wearer"
+                style={{
+                  backgroundColor: "transparent",
+                  paddingVertical: 0,
+                  paddingHorizontal: 0,
+                  borderRadius: 0,
+                  minHeight: 0,
+                  alignSelf: "stretch",
+                }}
+              />
+            )}
           </View>
 
           {/* DIVIDER */}
-          <View
-            style={{
-              width: 1,
-              alignSelf: "stretch",
-              backgroundColor: "#afafafff",
-            }}
-          />
+          <View style={{ width: 1, alignSelf: "stretch", backgroundColor: "#afafafff" }} />
 
           {/* RIGHT (collector) */}
           <View style={{ flex: 1, minWidth: 0, paddingLeft: scale(12) }}>
-            <StatTile
-              value={capStart(dto.valueForCollector)}
-              icon={require("../../../assets/images/value-for-collector.webp")}
-              label="Value for collector"
-              style={{
-                backgroundColor: "transparent",
-                paddingVertical: 0,
-                paddingHorizontal: 0,
-                borderRadius: 0,
-                minHeight: 0,
-                alignSelf: "stretch",
-              }}
-            />
+            {isLoading ? (
+              <StatTileSkeleton
+                style={{
+                  backgroundColor: "transparent",
+                  paddingVertical: 0,
+                  paddingHorizontal: 0,
+                  borderRadius: 0,
+                  alignSelf: "stretch",
+                }}
+              />
+            ) : (
+              <StatTile
+                value={capStart(dto.valueForCollector)}
+                icon={require("../../../assets/images/value-for-collector.webp")}
+                label="Value for collector"
+                style={{
+                  backgroundColor: "transparent",
+                  paddingVertical: 0,
+                  paddingHorizontal: 0,
+                  borderRadius: 0,
+                  minHeight: 0,
+                  alignSelf: "stretch",
+                }}
+              />
+            )}
           </View>
         </View>
       </View>
 
       {/* Row 5: Spec Efficiency */}
       <View style={{ marginTop: S.gap }}>
-        <StatTile
-          style={{ alignSelf: "stretch" }}
-          value={capStart(dto.specEffLabel)}
-          valueSize={scale(18)}
-          unit={dto.specEffNote ? `\n${dto.specEffNote}` : ""}
-          unitStyle={{
-            color: "#45494A",
-            fontSize: scale(14),
-            lineHeight: scale(18),
-            fontFamily: pillBodyFontFamily,
-          }}
-          icon={require("../../../assets/images/spec-efficiency.webp")}
-          label="Spec Efficiency"
-          valueLines={0}
-        />
+        {isLoading ? (
+          <StatTileSkeleton style={{ alignSelf: "stretch" }} />
+        ) : (
+          <StatTile
+            style={{ alignSelf: "stretch" }}
+            value={capStart(dto.specEffLabel)}
+            valueSize={scale(18)}
+            unit={dto.specEffNote ? `\n${dto.specEffNote}` : ""}
+            unitStyle={{
+              color: "#45494A",
+              fontSize: scale(14),
+              lineHeight: scale(18),
+              fontFamily: pillBodyFontFamily,
+            }}
+            icon={require("../../../assets/images/spec-efficiency.webp")}
+            label="Spec Efficiency"
+            valueLines={0}
+          />
+        )}
       </View>
 
       {/* Info overlay */}

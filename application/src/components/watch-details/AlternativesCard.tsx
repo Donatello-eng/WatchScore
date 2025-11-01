@@ -143,7 +143,7 @@ export default function AlternativesCard({
             {/* Middle: model + chip */}
             <View style={{ flex: 1, minWidth: 0, marginLeft: scale(14) }}>
               <Text
-                numberOfLines={2}
+                numberOfLines={3}
                 style={{
                   fontFamily: itemTitleFontFamily,
                   fontWeight: itemTitleFontFamily ? undefined : "700",

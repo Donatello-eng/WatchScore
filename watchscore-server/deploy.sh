@@ -13,7 +13,7 @@ TARBALL="${IMAGE}-${TAG}.tar"
 ssh "${HOST}" "mkdir -p '${REMOTE_BACKEND}'"
 
 # 2) put compose (and optionally .env) on the server
-scp docker-compose.yml "${HOST}:${REMOTE_BACKEND}/"
+scp docker-compose.prod.yml "${HOST}:${REMOTE_BACKEND}/"
 # if you keep a server-specific .env, copy it once and stop overwriting it each deploy
 scp .env "${HOST}:${REMOTE_BACKEND}/.env"
 

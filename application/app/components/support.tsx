@@ -16,6 +16,10 @@ import { useR } from "../../hooks/useR";
 import { LinearGradient } from "expo-linear-gradient";
 import { triggerHaptic } from "../../hooks/haptics";
 
+import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
+
+
+
 // Replace with your actual UI theme colors
 const UI = {
   stroke: "rgba(255,255,255,0.66)",
@@ -27,9 +31,10 @@ const DEFAULT_BG = ["#1e2b2f", "#F5E3DA"];
 
 export default function SupportScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { scale, vw, vh } = useR();
 
-  const safeTop = Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0;
+  //const safeTop = Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0;
 
   const handleEmailPress = () => {
     Linking.openURL("mailto:bumpgamespublic@gmail.com");
@@ -41,7 +46,7 @@ export default function SupportScreen() {
 
   // Responsive values via useR()
   const iconSize = scale(30);
-  const backPos = { top: safeTop + scale(12), left: scale(16) };
+  //const backPos = { top: safeTop + scale(12), left: scale(16) };
   const containerPad = { paddingHorizontal: vw(7), paddingVertical: vh(3) };
   const titleSizing = { fontSize: scale(24), marginBottom: scale(40) };
   const buttonSizing = {
@@ -54,7 +59,7 @@ export default function SupportScreen() {
   const footerTextSizing = { fontSize: scale(22), letterSpacing: 0.5 };
 
   return (
-    <View style={[styles.root, { paddingTop: safeTop }]}>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* background gradient */}
       <LinearGradient
         colors={["#FFFFFF", "#F3DCDD", "#E1C7E6"]}

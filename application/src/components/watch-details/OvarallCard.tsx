@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import GradeRing from "../../../app/components/gradeRing";
 import InfoOverlay from "app/components/InfoOverlay";
+import DotsEllipsis from "../loading/DotsEllipsis";
 
 type OverallScoreCardProps = {
   score: number;
@@ -17,7 +18,7 @@ type OverallScoreCardProps = {
   conclusion?: string;
   vw: (pct: number) => number;
   scale: (n: number) => number;
-  loading?: boolean;                         // drives ring + dots loading
+  loading?: boolean;
   titleFontFamily?: string;
   bodyFontFamily?: string;
   cardMarginH?: number;
@@ -32,69 +33,9 @@ type OverallScoreCardProps = {
   infoText?: string;
 };
 
-// --- Fixed visuals (no external inputs) ---
 const RING_SIZE = 156;
 const RING_STROKE = 20;
 const RING_LABEL_FONT_SIZE = 35;
-// Slower loading cycle (0→100→0) = 8s
-const LOADING_RING_CYCLE_MS = 8000;
-
-// --- pulsing "..." loader for the center label ---
-function DotsEllipsis({
-  dotSize = 12,
-  gap = 6,
-  baseOpacity = 0.35,
-  peakOpacity = 1,
-  duration = 900,
-}: {
-  dotSize?: number;
-  gap?: number;
-  baseOpacity?: number;
-  peakOpacity?: number;
-  duration?: number;
-}) {
-  const o1 = useRef(new Animated.Value(baseOpacity)).current;
-  const o2 = useRef(new Animated.Value(baseOpacity)).current;
-  const o3 = useRef(new Animated.Value(baseOpacity)).current;
-
-  const makeLoop = (val: Animated.Value, delay: number) =>
-    Animated.loop(
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(val, { toValue: peakOpacity, duration: duration / 2, useNativeDriver: true }),
-        Animated.timing(val, { toValue: baseOpacity, duration: duration / 2, useNativeDriver: true }),
-      ])
-    );
-
-  useEffect(() => {
-    const loops = [makeLoop(o1, 0), makeLoop(o2, duration / 3), makeLoop(o3, (2 * duration) / 3)];
-    loops.forEach(l => l.start());
-    return () => loops.forEach(l => l.stop());
-  }, [o1, o2, o3, duration, baseOpacity, peakOpacity]);
-
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
-      <Animated.View
-        style={{
-          width: dotSize, height: dotSize, borderRadius: dotSize / 2,
-          marginHorizontal: gap / 2, backgroundColor: "#CFCFCF", opacity: o1,
-        }}
-      />
-      <Animated.View
-        style={{
-          width: dotSize, height: dotSize, borderRadius: dotSize / 2,
-          marginHorizontal: gap / 2, backgroundColor: "#CFCFCF", opacity: o2,
-        }}
-      />
-      <Animated.View
-        style={{
-          width: dotSize, height: dotSize, borderRadius: dotSize / 2,
-          marginHorizontal: gap / 2, backgroundColor: "#CFCFCF", opacity: o3,
-        }}
-      />
-    </View>
-  );
-}
 
 export default function OverallScoreCard({
   score,
@@ -141,27 +82,6 @@ export default function OverallScoreCard({
     }),
     [vw, scale, cardMarginH, cardPadding, cardRadius, cardMarginT]
   );
-
-  // Smooth, adjustable-speed loading loop using rAF + triangle wave (fixed slow cycle)
-  const [loopScore, setLoopScore] = useState(0);
-  useEffect(() => {
-    if (!loading) { setLoopScore(0); return; }
-
-    let raf = 0;
-    const t0 = Date.now();
-
-    const tick = () => {
-      const elapsed = (Date.now() - t0) % LOADING_RING_CYCLE_MS;
-      const phase = (elapsed / LOADING_RING_CYCLE_MS) * 2; // 0..2
-      const y01 = phase < 1 ? phase : (2 - phase); // 0→1→0
-      const value = Math.round(y01 * 100);
-      setLoopScore(value);
-      raf = requestAnimationFrame(tick);
-    };
-
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [loading]);
 
   const isLoading = loading || (letter === "-" && !score);
 
@@ -222,7 +142,8 @@ export default function OverallScoreCard({
       <View style={{ alignItems: "center", marginTop: S.ringTop }}>
         <View style={{ width: RING_SIZE, height: RING_SIZE, position: "relative" }}>
           <GradeRing
-            score={isLoading ? loopScore : (score ?? 0)}
+            loading={isLoading}
+            score={score}
             letter={isLoading ? "" : (letter ?? "")}  // hide "-" while loading
             baseSize={RING_SIZE}
             baseStroke={RING_STROKE}

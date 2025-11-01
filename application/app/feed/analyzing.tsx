@@ -270,20 +270,25 @@ export default function Analyzing() {
                         />
 
                         {/* image box */}
-                        <Animated.View style={[styles.box, { transform: [{ translateY }] }]}>
-                            <Image
-                                source={{ uri: photoUrl }}
-                                resizeMode="contain"
-                                style={styles.image}
-                            />
-
-                            {/* moving shine */}
-                            <AnimatedLinearGradient
-                                colors={["transparent", "rgba(255,255,255,0.55)", "transparent"]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={[styles.shine, { transform: [{ translateX: shineX }] }]}
-                            />
+                        <Animated.View
+                            style={[styles.frame, { transform: [{ translateY }] }]}
+                            needsOffscreenAlphaCompositing
+                        >
+                            <View style={styles.clip}>
+                                <Image
+                                    source={{ uri: photoUrl }}
+                                    resizeMode="contain"
+                                    resizeMethod="resize"
+                                    style={styles.image}
+                                />
+                                <AnimatedLinearGradient
+                                    colors={["transparent", "rgba(255,255,255,0.55)", "transparent"]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    pointerEvents="none"
+                                    style={[styles.shine, { transform: [{ translateX: shineX }] }]}
+                                />
+                            </View>
                         </Animated.View>
                     </View>
                 )}
@@ -294,8 +299,28 @@ export default function Analyzing() {
 
 const BOX_W = Math.min(SCREEN_W * 0.78, 360);
 
+const RADIUS = 28;
+
 const styles = StyleSheet.create({
     root: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+    frame: {
+        width: BOX_W,
+        height: BOX_W * 1.15,
+        borderRadius: RADIUS,
+        backgroundColor: "transparent",
+        // explicitly zero out any shadows/elevation
+        elevation: 0,
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        shadowOffset: { width: 0, height: 0 },
+    },
+    clip: {
+        flex: 1,
+        borderRadius: RADIUS,
+        overflow: "hidden",
+        backgroundColor: "rgba(255,255,255,0.35)",
+    },
 
     stage: {
         width: BOX_W * 1.9,
@@ -311,21 +336,6 @@ const styles = StyleSheet.create({
         borderRadius: (BOX_W * 1.2) / 2,
         borderWidth: 2,
         borderColor: "rgba(255,255,255,0.8)",
-    },
-
-    box: {
-        width: BOX_W,
-        height: BOX_W * 1.15,
-        borderRadius: 28,             // ⬅️ rounded corners like your card
-        overflow: "hidden",
-        backgroundColor: "rgba(255,255,255,0.35)",
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.5)",
-        shadowColor: "#000",
-        shadowOpacity: 0.08,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 8 },
-        elevation: 6,
     },
 
     image: {

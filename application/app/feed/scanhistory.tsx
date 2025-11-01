@@ -59,7 +59,7 @@ export default function ScanHistory() {
     const insets = useSafeAreaInsets();
     const { scale, vw, vh } = useR();        // call once
     const s = scale;
-    const EXTRA_TOP = s(55);
+    const EXTRA_TOP = s(70);
 
     const [active, setActive] = useState<"camera" | "collection">("collection");
     const [rows, setRows] = useState<WatchRow[] | null>(null);
@@ -187,6 +187,9 @@ export default function ScanHistory() {
             contentContainerStyle={{ paddingHorizontal: vw(5), paddingBottom: insets.bottom + s(84), paddingTop: s(16), gap: s(12) }}
             renderItem={({ item }) => <Card item={item} />}
             showsVerticalScrollIndicator={false}
+            overScrollMode="always"            // <<< bring back Android stretch
+            nestedScrollEnabled                // keeps physics correct with overlays
+            removeClippedSubviews={false}      // avoids clipping with blurred overlay
         />
     );
 
@@ -196,12 +199,21 @@ export default function ScanHistory() {
 
     const titleStyle = [
         styles.title,
-        {
-            fontSize: scale(32),
-            lineHeight: scale(32),
-            fontFamily: Font.inter.extraBold,
-            ...(Platform.OS === "android" ? { includeFontPadding: false } : null),
-        },
+        Platform.OS === "android"
+            ? {
+                fontSize: scale(32),
+                fontFamily: Font.inter.extraBold,
+                // let Android compute a safe line box (no manual lineHeight)
+                includeFontPadding: true,
+                // OR, if you want to control it:
+                // lineHeight: Math.ceil(fs * 1.18),
+                // paddingBottom: 2,
+            }
+            : {
+                fontSize: scale(32),
+                lineHeight: scale(32),               // iOS is fine
+                fontFamily: Font.inter.extraBold,
+            },
     ];
 
     return (
@@ -262,32 +274,44 @@ export default function ScanHistory() {
                 )}
             </SafeAreaView>
 
-            {/* Bottom pill nav */}
-            <View style={[styles.navPillWrapper, { bottom: insets.bottom + s(12) }]}>
-                {/* Blur sits under the content */}
-                <BlurView tint="light" intensity={20} style={StyleSheet.absoluteFill} />
 
-                {/* Actual content, no opaque bg here */}
-                <View style={styles.navPillContent}>
-                    <Pressable
-                        onPress={() => { triggerHaptic("impactMedium"); setActive("camera"); router.push("/feed/uploadphotos"); }}
-                        style={[styles.navItem, active === "camera" && styles.navItemActive]}
-                        hitSlop={8}
-                    >
-                        <Image source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
-                        <Text style={[styles.navItemLabel, active === "camera" && styles.navItemLabelActive]}>Camera</Text>
-                    </Pressable>
+            <View style={[styles.navPillWrapper, { bottom: insets.bottom + s(12) }]}
+                pointerEvents="box-none"   >
+                <View style={styles.pillClip} collapsable={false}>
+                    <BlurView
+                        tint="light"
+                        intensity={20}
+                        style={StyleSheet.absoluteFill}
+                        pointerEvents="none"
+                        experimentalBlurMethod="dimezisBlurView"
+                    />
+                    {Platform.OS === "android" && (
+                        <View
+                            pointerEvents="none"
+                            style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(255,255,255,0.12)" }]}
+                        />
+                    )}
+                    <View style={styles.navPillContent}>
+                        <Pressable
+                            onPress={() => { triggerHaptic("impactMedium"); setActive("camera"); router.push("/feed/uploadphotos"); }}
+                            style={[styles.navItem, active === "camera" && styles.navItemActive]}
+                            hitSlop={8}
+                        >
+                            <Image source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                            <Text style={[styles.navItemLabel, active === "camera" && styles.navItemLabelActive]}>Camera</Text>
+                        </Pressable>
 
-                    <Pressable
-                        onPress={() => { triggerHaptic("impactMedium"); setActive("collection"); }}
-                        style={[styles.navItem, { paddingHorizontal: 15 }, active === "collection" && styles.navItemActive]}
-                        hitSlop={8}
-                    >
-                        <Image source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
-                        <Text style={[styles.navItemLabel, active === "collection" && styles.navItemLabelActive, { fontFamily: Font.inter.semiBold, fontSize: 11 }]}>
-                            Collection
-                        </Text>
-                    </Pressable>
+                        <Pressable
+                            onPress={() => { triggerHaptic("impactMedium"); setActive("collection"); }}
+                            style={[styles.navItem, { paddingHorizontal: 15 }, active === "collection" && styles.navItemActive]}
+                            hitSlop={8}
+                        >
+                            <Image source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                            <Text style={[styles.navItemLabel, active === "collection" && styles.navItemLabelActive, { fontFamily: Font.inter.semiBold, fontSize: 11 }]}>
+                                Collection
+                            </Text>
+                        </Pressable>
+                    </View>
                 </View>
             </View>
         </View>
@@ -338,8 +362,6 @@ const styles = StyleSheet.create({
         position: "absolute",
         alignSelf: "center",
         borderRadius: 100,
-        overflow: "hidden",                       // clip BlurView to pill
-        // subtle milkiness + edge
         backgroundColor: "rgba(255,255,255,0.10)",
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: "rgba(255,255,255,0.35)",
@@ -350,11 +372,20 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 6 },
         elevation: 8,                             // Android shadow
     },
+
+    pillClip: {
+        borderRadius: 50,
+        overflow: "hidden",          // critical: clips BlurView to pill
+        // make sure Android respects stacking:
+        position: "relative",
+    },
     navPillContent: {
-        alignItems: "center",
         flexDirection: "row",
-        justifyContent: "space-between",
-        paddingVertical: 5,
-        paddingHorizontal: 5,
+        alignItems: "center",
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        position: "relative",
+        zIndex: 1,                   // ensure above BlurView on Android
+        elevation: 1,                // belt-and-suspenders for Android
     },
 });

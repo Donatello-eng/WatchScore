@@ -7,31 +7,28 @@ import {
   ViewStyle,
   TextStyle,
   Pressable,
+  StyleProp,
 } from "react-native";
-import GradeRing from "../../../app/components/gradeRing";
+import GradeRing from "../../../app/components/gradeRing";            // updated ring with `loading`
 import StatTile from "../../../app/components/statTile";
+import DotsEllipsis from "../loading/DotsEllipsis";
 import InfoOverlay from "app/components/InfoOverlay";
+import { StatTileSkeleton } from "../loading/skeletons";
 
 export type MaintenanceRisksDTO = {
   scoreNumeric: number;
   scoreLetter: string;
 
-  // top-left tile
   serviceIntervalMin?: number | null;
   serviceIntervalMax?: number | null;
 
-  // row 2
   serviceCostRaw?: string;
   serviceCostAmountMin?: number | null;
   serviceCostAmountMax?: number | null;
   serviceCostCurrency?: string | null;
 
   partsAvailability?: string;
-
-  // row 3
   serviceability?: string;
-
-  // row 4
   weakPoints?: string[];
 };
 
@@ -50,6 +47,7 @@ export function MaintenanceAndRisksCard({
   containerStyle,
   infoTitle,
   infoText,
+  loading = false,                                        // NEW
 }: {
   dto: MaintenanceRisksDTO;
   vw: (pct: number) => number;
@@ -62,9 +60,10 @@ export function MaintenanceAndRisksCard({
   cardMarginT?: number;
   headerTint?: string;
   unitColor?: string;
-  containerStyle?: ViewStyle;
+  containerStyle?: StyleProp<ViewStyle>;
   infoTitle?: string;
   infoText?: string;
+  loading?: boolean;                                      // NEW
 }) {
   const S = useMemo(
     () => ({
@@ -78,6 +77,16 @@ export function MaintenanceAndRisksCard({
     }),
     [vw, scale, cardMarginH, cardPadding, cardRadius, cardMarginT]
   );
+
+  // same detection as other cards: fall back to loading when letter is "-" and no score
+  const isLoading = loading || (dto.scoreLetter === "-" && !dto.scoreNumeric);
+
+  // ring + dots sizing
+  const RING_SIZE = 86;
+  const RING_STROKE = 10;
+  const RING_LABEL_FONT_SIZE = 24;
+  const dotSize = Math.max(8, Math.min(RING_SIZE * 0.12, 12));
+  const dotGap = Math.max(4, dotSize * 0.5);
 
   const intervalText = formatInterval(dto.serviceIntervalMin, dto.serviceIntervalMax);
   const intervalUnitStyle: TextStyle = {
@@ -104,13 +113,12 @@ export function MaintenanceAndRisksCard({
   const weakPointsValue =
     Array.isArray(dto.weakPoints) && dto.weakPoints.length
       ? dto.weakPoints
-          .map((w) => String(w ?? "").trim())
-          .filter(Boolean)
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-          .join("\n")
+        .map((w) => String(w ?? "").trim())
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join("\n")
       : "–";
 
-  // info popup
   const [showInfo, setShowInfo] = useState(false);
   const defaultInfoTitle = "About Maintenance & Risks";
   const defaultInfoText =
@@ -139,7 +147,6 @@ export function MaintenanceAndRisksCard({
         <Text style={[styles.headerText, { fontSize: S.headerSize, fontFamily: titleFontFamily }]}>
           Maintenance & Risks
         </Text>
-
         <Pressable hitSlop={8} onPress={() => setShowInfo(true)} style={{ marginLeft: 6 }}>
           <Image
             source={require("../../../assets/images/info.webp")}
@@ -152,66 +159,100 @@ export function MaintenanceAndRisksCard({
       {/* Row 1: Service Interval + Ring */}
       <View style={{ flexDirection: "row", marginTop: S.gap + scale(2) }}>
         <View style={{ flex: 1, minWidth: 0, marginRight: S.gap }}>
-          <StatTile
-            style={{ alignSelf: "stretch" }}
-            value={intervalText}
-            unit={"years"}
-            unitStyle={intervalUnitStyle}
-            icon={require("../../../assets/images/service-interval.webp")}
-            label="Service Interval"
-            valueSize={26}
-          />
+          {isLoading ? (
+            <StatTileSkeleton style={{ alignSelf: "stretch" }} />
+          ) : (
+            <StatTile
+              style={{ alignSelf: "stretch" }}
+              value={intervalText}
+              unit={"years"}
+              unitStyle={intervalUnitStyle}
+              icon={require("../../../assets/images/service-interval.webp")}
+              label="Service Interval"
+              valueSize={26}
+            />
+          )}
         </View>
+
         <View style={{ flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center" }}>
-          <GradeRing
-            score={dto.scoreNumeric ?? 0}
-            letter={dto.scoreLetter ?? "-"}
-            baseSize={86}
-            baseStroke={10}
-          />
+          <View style={{ width: RING_SIZE, height: RING_SIZE, position: "relative" }}>
+            <GradeRing
+              loading={isLoading}                                  // NEW: internal 0→100→0 loop
+              score={dto.scoreNumeric ?? 0}
+              letter={isLoading ? "" : (dto.scoreLetter ?? "-")}   // hide letter while loading
+              baseSize={RING_SIZE}
+              baseStroke={RING_STROKE}
+              labelFontSize={RING_LABEL_FONT_SIZE}
+            />
+            {isLoading && (
+              <View
+                pointerEvents="none"
+                style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}
+              >
+                <DotsEllipsis running dotSize={dotSize} gap={dotGap} />
+              </View>
+            )}
+          </View>
         </View>
       </View>
 
       {/* Row 2: Service Cost + Parts Availability */}
       <View style={{ flexDirection: "row", marginTop: S.gap }}>
-        <StatTile
-          style={{ flex: 1, marginRight: S.gap }}
-          value={serviceCost}
-          icon={require("../../../assets/images/service-cost.webp")}
-          label="Service Cost"
-        />
-        <StatTile
-          style={{ flex: 1 }}
-          value={partsAvailabilityText}
-          icon={require("../../../assets/images/parts-availability.webp")}
-          label="Parts Availability"
-        />
+        {isLoading ? (
+          <>
+            <StatTileSkeleton style={{ flex: 1, marginRight: S.gap }} />
+            <StatTileSkeleton style={{ flex: 1 }} />
+          </>
+        ) : (
+          <>
+            <StatTile
+              style={{ flex: 1, marginRight: S.gap }}
+              value={serviceCost}
+              icon={require("../../../assets/images/service-cost.webp")}
+              label="Service Cost"
+            />
+            <StatTile
+              style={{ flex: 1 }}
+              value={partsAvailabilityText}
+              icon={require("../../../assets/images/parts-availability.webp")}
+              label="Parts Availability"
+            />
+          </>
+        )}
       </View>
 
       {/* Row 3: Serviceability */}
       <View style={{ marginTop: S.gap }}>
-        <StatTile
-          style={{ alignSelf: "stretch" }}
-          value={serviceabilityText}
-          icon={require("../../../assets/images/serviceability.webp")}
-          label="Serviceability"
-          valueSize={16}
-        />
+        {isLoading ? (
+          <StatTileSkeleton style={{ alignSelf: "stretch" }} />
+        ) : (
+          <StatTile
+            style={{ alignSelf: "stretch" }}
+            value={serviceabilityText}
+            icon={require("../../../assets/images/serviceability.webp")}
+            label="Serviceability"
+            valueSize={16}
+            valueLines={3}
+          />
+        )}
       </View>
 
       {/* Row 4: Known Weak Points */}
       <View style={{ marginTop: S.gap }}>
-        <StatTile
-          style={{ alignSelf: "stretch" }}
-          value={weakPointsValue}
-          valueSize={scale(12)}
-          icon={require("../../../assets/images/weak-points.webp")}
-          label="Known Weak Points"
-          valueLines={0}
-        />
+        {isLoading ? (
+          <StatTileSkeleton style={{ alignSelf: "stretch" }} />
+        ) : (
+          <StatTile
+            style={{ alignSelf: "stretch" }}
+            value={weakPointsValue}
+            valueSize={scale(12)}
+            icon={require("../../../assets/images/weak-points.webp")}
+            label="Known Weak Points"
+            valueLines={0}
+          />
+        )}
       </View>
 
-      {/* Info Overlay */}
       <InfoOverlay
         visible={showInfo}
         title={infoTitle ?? defaultInfoTitle}
@@ -228,7 +269,7 @@ const styles = StyleSheet.create({
   headerText: { color: "#A8A8A8", fontWeight: "600" },
 });
 
-// --- helpers (keep local to the card) ---
+// helpers
 function formatInterval(min?: number | null, max?: number | null) {
   const a = typeof min === "number" ? min : null;
   const b = typeof max === "number" ? max : null;
@@ -236,7 +277,6 @@ function formatInterval(min?: number | null, max?: number | null) {
   if (a != null && b != null) return `${a}-${b}`;
   return String(a ?? b ?? "–");
 }
-
 function fmtServiceCost(input: { raw?: string; min?: number | null; max?: number | null; currency?: string }) {
   if (input.raw && String(input.raw).trim()) return String(input.raw).trim();
   const sym = currencyToSymbol(input.currency);
@@ -247,7 +287,6 @@ function fmtServiceCost(input: { raw?: string; min?: number | null; max?: number
   if (hasMax) return `${input.max} ${sym}`;
   return `– ${sym}`;
 }
-
 function currencyToSymbol(c?: string) {
   const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥" };
   return c ? map[c] ?? "$" : "$";
