@@ -9,6 +9,7 @@ import {
   Platform,
   Animated,
   Easing,
+  useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -74,13 +75,12 @@ function useImageAnimations(staggerMs = 0, introMs = 1100) {
 
     introOpacity.setValue(0);
     introScale.setValue(0.9);
-    // (idle drivers start from 0 automatically)
 
     // Slower, smoother reveal (fade + scale)
     const intro = Animated.parallel([
       Animated.timing(introOpacity, {
         toValue: 1,
-        duration: introMs, // increase for slower intro
+        duration: introMs,
         easing: Easing.inOut(Easing.quad),
         useNativeDriver: true,
         delay: staggerMs,
@@ -175,14 +175,64 @@ function useImageAnimations(staggerMs = 0, introMs = 1100) {
 export default function UploadPhotos() {
   const insets = useSafeAreaInsets();
   const { scale, vw, vh } = useR();
+  const { width, height } = useWindowDimensions();
+  const [titleH, setTitleH] = React.useState(0);
 
-  // Set a clearly slower intro for testing (e.g., 4000ms)
-  const INTRO_MS = 1500;
-
-  // Slightly larger stagger for a calm cascade
+  const INTRO_MS = 700;
   const frontAnim = useImageAnimations(0, INTRO_MS);
   const backAnim = useImageAnimations(200, INTRO_MS);
   const sideAnim = useImageAnimations(400, INTRO_MS);
+
+  // Reserve space for the absolute button (no guessing on tablets)
+  const [btnH, setBtnH] = React.useState(0);
+
+  // horizontal padding that wraps the collage
+  const H_PAD = vw(8);
+  const V_GAP = 12; // min vertical gap between rows
+
+  // total screen area minus safe areas
+  const usableH = height - insets.top - insets.bottom;
+
+  // keep a little breathing space above/below tiles
+  const TOP_BUFFER = vh(1.5);
+  const BOTTOM_BUFFER = vh(3) + btnH + 8; // your button guard
+
+  // real space for collage block
+  const availH = Math.max(
+    0,
+    usableH - titleH - TOP_BUFFER - BOTTOM_BUFFER
+  );
+
+  // width the collage can use
+  const availW = Math.max(0, width - H_PAD * 2);
+
+  const TILE_SCALE = 1.08;
+
+  const TILE1_W_RATIO = 0.48;  
+  const TILE2_W_RATIO = 0.66;  
+  const TILE1_CAP = 392 * TILE_SCALE; // was 360
+  const TILE2_CAP = 456 * TILE_SCALE; // was 420
+
+  // tiles (height bound unchanged so it can't overflow vertically)
+  const tile1 = Math.min(
+    availW * TILE1_W_RATIO * TILE_SCALE,
+    (availH - V_GAP) / 2,
+    TILE1_CAP
+  );
+
+  const tile2 = Math.min(
+    availW * TILE2_W_RATIO * TILE_SCALE,
+    (availH - V_GAP) / 2,
+    TILE2_CAP
+  );
+  const freeBelowRow1 = Math.max(0, availH - tile1 - V_GAP);
+
+  const casebackDown = Math.min(
+    tile1 * 0.36 + 10,
+    freeBelowRow1 * 0.7
+  );
+  const sideUp = Math.min(tile1 * 0.10, availH * 0.08);
+  const sideLeftPad = Math.min(availW * 0.04, 40);
 
   return (
     <View style={styles.root}>
@@ -199,7 +249,6 @@ export default function UploadPhotos() {
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Only left/right edges; we control top/bottom padding explicitly */}
       <SafeAreaView
         style={[
           styles.safe,
@@ -225,6 +274,7 @@ export default function UploadPhotos() {
         {/* Big title */}
         <View style={{ paddingHorizontal: vw(20), marginTop: vh(1) }}>
           <Text
+            onLayout={e => setTitleH(e.nativeEvent.layout.height)}
             style={{
               fontFamily: Font.inter.bold,
               fontSize: scale(44),
@@ -236,79 +286,67 @@ export default function UploadPhotos() {
           </Text>
         </View>
 
-        {/* Collage zone */}
-        <View>
-          {/* Front */}
-          <Pressable
-            onPress={frontAnim.onPress}
-            style={[
-              styles.cardWrap,
-              { width: vw(49), height: vw(49), left: vw(10), top: vh(5) },
-            ]}
-          >
-            {/* Optional: force remount if you tweak timings during dev */}
-            {/* <Animated.View key={`front-0-${INTRO_MS}`} ... /> */}
-            <Animated.View
-              style={[ABS_FILL, styles.cardShadow, frontAnim.animatedStyle]}
-              pointerEvents="none"
+        {/* Collage zone: fills available space between title and button */}
+        <View
+          style={[
+            styles.collageContainer,
+            {
+              paddingHorizontal: H_PAD,
+              paddingTop: TOP_BUFFER + sideUp,   // absorb the visual lift
+              paddingBottom: BOTTOM_BUFFER,      // keeps clear of the button
+            },
+          ]}
+        >
+          {/* Row 1 */}
+          <View style={[styles.row, { alignItems: "flex-start", marginBottom: V_GAP }]}>
+            <Pressable
+              onPress={frontAnim.onPress}
+              style={[styles.cardWrap, { width: tile1, aspectRatio: 1 }]}
             >
-              <Image
-                source={require("../../assets/images/front.webp")}
-                style={{ width: "100%", height: "100%" }}
-                resizeMode="contain"
-              />
-            </Animated.View>
-          </Pressable>
+              <Animated.View style={[ABS_FILL, styles.cardShadow, frontAnim.animatedStyle]} pointerEvents="none">
+                <Image source={require("../../assets/images/front.webp")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+              </Animated.View>
+            </Pressable>
 
-          {/* Caseback */}
-          <Pressable
-            onPress={backAnim.onPress}
-            style={[
-              styles.cardWrap,
-              { width: vw(49), height: vw(49), right: vw(0), top: vh(16) },
-            ]}
-          >
-            {/* <Animated.View key={`back-200-${INTRO_MS}`} ... /> */}
-            <Animated.View
-              style={[ABS_FILL, styles.cardShadow, backAnim.animatedStyle]}
-              pointerEvents="none"
-            >
-              <Image
-                source={require("../../assets/images/caseback.webp")}
-                style={{ width: "100%", height: "100%" }}
-                resizeMode="contain"
-              />
-            </Animated.View>
-          </Pressable>
+            {/* wrapper adds vertical offset and grows row height */}
+            <View style={{ width: tile1, height: tile1 }}>
+              <Pressable
+                onPress={backAnim.onPress}
+                style={[styles.cardWrap, { width: "100%", height: "100%", transform: [{ translateY: casebackDown }] }]}
+              >
+                <Animated.View style={[ABS_FILL, styles.cardShadow, backAnim.animatedStyle]} pointerEvents="none">
+                  <Image source={require("../../assets/images/caseback.webp")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+                </Animated.View>
+              </Pressable>
+            </View>
+          </View>
 
-          {/* Side */}
-          <Pressable
-            onPress={sideAnim.onPress}
-            style={[
-              styles.cardWrap,
-              { width: vw(60), height: vw(60), right: vw(37), top: vh(27) },
-            ]}
-          >
-            {/* <Animated.View key={`side-400-${INTRO_MS}`} ... /> */}
-            <Animated.View
-              style={[ABS_FILL, styles.cardShadow, sideAnim.animatedStyle]}
-              pointerEvents="none"
+          {/* Row 2: side higher + a touch left */}
+          <View style={[styles.row, { justifyContent: "flex-start" }]}>
+            <Pressable
+              onPress={sideAnim.onPress}
+              style={[
+                styles.cardWrap,
+                {
+                  width: tile2,
+                  aspectRatio: 1,
+                  marginLeft: -sideLeftPad,             // subtle left nudge
+                  transform: [{ translateY: -sideUp }], // visual lift
+                  alignSelf: "flex-start",
+                },
+              ]}
             >
-              <Image
-                source={require("../../assets/images/side.webp")}
-                style={{ width: "100%", height: "100%" }}
-                resizeMode="contain"
-              />
-            </Animated.View>
-          </Pressable>
+              <Animated.View style={[ABS_FILL, styles.cardShadow, sideAnim.animatedStyle]} pointerEvents="none">
+                <Image source={require("../../assets/images/side.webp")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+              </Animated.View>
+            </Pressable>
+          </View>
         </View>
 
-        {/* Begin button */}
+        {/* Begin button (unchanged; just measure height) */}
         <Pressable
-          onPress={() => {
-            triggerHaptic("impactMedium");
-            router.push("/feed/camera");
-          }}
+          onLayout={e => setBtnH(e.nativeEvent.layout.height)}
+          onPress={() => { triggerHaptic("impactMedium"); router.push("/feed/camera"); }}
           style={({ pressed }) => [
             styles.beginBtn,
             pressed && { transform: [{ scale: 0.98 }] },
@@ -320,27 +358,10 @@ export default function UploadPhotos() {
             },
           ]}
         >
-          <Text
-            style={{
-              fontFamily: Font.inter.bold,
-              fontSize: scale(22),
-              color: "#FFFFFF",
-            }}
-          >
-            Begin
-          </Text>
-
-          {/* Chevron pinned to the right, text stays centered */}
+          <Text style={{ fontFamily: Font.inter.bold, fontSize: scale(22), color: "#FFFFFF" }}>Begin</Text>
           <Image
             source={require("../../assets/images/chevron-left.webp")}
-            style={{
-              position: "absolute",
-              right: scale(18),
-              width: scale(20),
-              height: scale(20),
-              tintColor: "#FFFFFF",
-              transform: [{ rotate: "180deg" }],
-            }}
+            style={{ position: "absolute", right: scale(18), width: scale(20), height: scale(20), tintColor: "#FFFFFF", transform: [{ rotate: "180deg" }] }}
             resizeMode="contain"
           />
         </Pressable>
@@ -353,19 +374,33 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   safe: { flex: 1 },
 
+  // Collage fills the vertical gap and keeps clear of the Begin button
+  collageContainer: {
+    flexGrow: 1,
+    justifyContent: "center",
+  },
+
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  // Not absolute anymore; we let flex layout manage positioning
   cardWrap: {
-    position: "absolute",
+    borderRadius: 12,
+    overflow: "visible",
   },
 
   // Subtle lift that complements the motion
   cardShadow: {
     ...(Platform.OS === "ios"
       ? {
-          shadowColor: "#000",
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 4 },
-        }
+        shadowColor: "#000",
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
+      }
       : { elevation: 4 }),
   },
 

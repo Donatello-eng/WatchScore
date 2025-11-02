@@ -16,6 +16,7 @@ import { useFocusEffect } from "expo-router";
 
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
+import { Portal } from "@gorhom/portal";
 
 // --- minimal types used here ---
 type Money = { amount?: number | null; currency?: string | null };
@@ -274,46 +275,47 @@ export default function ScanHistory() {
                 )}
             </SafeAreaView>
 
-
-            <View style={[styles.navPillWrapper, { bottom: insets.bottom + s(12) }]}
-                pointerEvents="box-none"   >
-                <View style={styles.pillClip} collapsable={false}>
-                    <BlurView
-                        tint="light"
-                        intensity={20}
-                        style={StyleSheet.absoluteFill}
-                        pointerEvents="none"
-                        experimentalBlurMethod="dimezisBlurView"
-                    />
-                    {Platform.OS === "android" && (
-                        <View
+            <Portal>
+                <View style={[styles.navPillWrapper, { bottom: insets.bottom + s(12) }]}
+                    pointerEvents="box-none"   >
+                    <View style={styles.pillClip} collapsable={false}>
+                        <BlurView
+                            tint="light"
+                            intensity={20}
+                            style={StyleSheet.absoluteFill}
                             pointerEvents="none"
-                            style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(255,255,255,0.12)" }]}
+                            experimentalBlurMethod="dimezisBlurView"
                         />
-                    )}
-                    <View style={styles.navPillContent}>
-                        <Pressable
-                            onPress={() => { triggerHaptic("impactMedium"); setActive("camera"); router.push("/feed/uploadphotos"); }}
-                            style={[styles.navItem, active === "camera" && styles.navItemActive]}
-                            hitSlop={8}
-                        >
-                            <Image source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
-                            <Text style={[styles.navItemLabel, active === "camera" && styles.navItemLabelActive]}>Camera</Text>
-                        </Pressable>
+                        {Platform.OS === "android" && (
+                            <View
+                                pointerEvents="none"
+                                style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(255,255,255,0.12)" }]}
+                            />
+                        )}
+                        <View style={styles.navPillContent}>
+                            <Pressable
+                                onPress={() => { triggerHaptic("impactMedium"); setActive("camera"); router.push("/feed/uploadphotos"); }}
+                                style={[styles.navItem, active === "camera" && styles.navItemActive]}
+                                hitSlop={8}
+                            >
+                                <Image source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                <Text style={[styles.navItemLabel, active === "camera" && styles.navItemLabelActive]}>Camera</Text>
+                            </Pressable>
 
-                        <Pressable
-                            onPress={() => { triggerHaptic("impactMedium"); setActive("collection"); }}
-                            style={[styles.navItem, { paddingHorizontal: 15 }, active === "collection" && styles.navItemActive]}
-                            hitSlop={8}
-                        >
-                            <Image source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
-                            <Text style={[styles.navItemLabel, active === "collection" && styles.navItemLabelActive, { fontFamily: Font.inter.semiBold, fontSize: 11 }]}>
-                                Collection
-                            </Text>
-                        </Pressable>
+                            <Pressable
+                                onPress={() => { triggerHaptic("impactMedium"); setActive("collection"); }}
+                                style={[styles.navItem, { paddingHorizontal: 15 }, active === "collection" && styles.navItemActive]}
+                                hitSlop={8}
+                            >
+                                <Image source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                <Text style={[styles.navItemLabel, active === "collection" && styles.navItemLabelActive, { fontFamily: Font.inter.semiBold, fontSize: 11 }]}>
+                                    Collection
+                                </Text>
+                            </Pressable>
+                        </View>
                     </View>
                 </View>
-            </View>
+            </Portal>
         </View>
     );
 }
@@ -370,7 +372,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.12,
         shadowRadius: 12,
         shadowOffset: { width: 0, height: 6 },
-        elevation: 8,                             // Android shadow
+        elevation: 0,
     },
 
     pillClip: {
@@ -385,7 +387,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 10,
         position: "relative",
-        zIndex: 1,                   // ensure above BlurView on Android
-        elevation: 1,                // belt-and-suspenders for Android
+        zIndex: 0,                   // ensure above BlurView on Android
+        elevation: 0,                // belt-and-suspenders for Android
     },
 });
