@@ -40,6 +40,7 @@ import { ServerWatch, WatchAI } from "@/types/watch";
 import { API_BASE } from "@/config/api";
 import { authHeaders } from "@/auth/session";
 import { apiFetch } from "@/api/http";
+import { triggerHaptic } from "hooks/haptics";
 
 function decodeJsonParam<T = unknown>(v?: string | string[] | null): T | null {
   const raw = Array.isArray(v) ? v[0] : v;
@@ -419,7 +420,10 @@ export default function WatchDetails() {
           {/* Back */}
           <Pressable
             hitSlop={12}
-            onPress={() => router.replace("/feed/scanhistory")}
+            onPress={() => {
+              triggerHaptic("impactMedium");
+              router.replace("/feed/scanhistory");
+            }}
             style={styles.backBtn}
           >
             <Image

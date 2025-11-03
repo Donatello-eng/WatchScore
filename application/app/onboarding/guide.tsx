@@ -22,6 +22,7 @@ import { useR } from "../../hooks/useR";
 import { Dots } from "../../ui/dots";
 import { guideSlides } from "../../hooks/guideSlidesData";
 import { triggerHaptic } from "../../hooks/haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 /** ---------- Helpers ---------- **/
 
@@ -162,11 +163,19 @@ export default function Guide() {
   };
 
   // Core: programmatic page change using native scroll + tiny wiggle on the stage
-  const runNext = (dir: 1 | -1) => {
+  const runNext = async (dir: 1 | -1) => {
     if (animatingRef.current || w === 0) return;
 
     if (dir > 0 && index >= total - 1) {
-      router.push("/feed/scanhistory");
+      try {
+        await AsyncStorage.multiSet([
+          ["hasOnboarded", "true"],
+          ["onboardingDone", "1"], // legacy key your offline screen checks
+        ]);
+      } finally {
+        // navigate only after the flag is persisted
+        router.replace("/feed/scanhistory");
+      }
       return;
     }
     if (dir < 0 && index <= 0) {

@@ -307,40 +307,40 @@ export default function CameraScreen() {
     borderLeftWidth: CORNER.stroke,
   };
 
-const pickFromGallery = async () => {
-  try {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      await Linking.openSettings();
-      return;
+  const pickFromGallery = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        await Linking.openSettings();
+        return;
+      }
+
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"], // <- new API
+        allowsEditing: false,
+        quality: 1, // pick original; compress after
+        //  allowsMultipleSelection: true, // default false; omit selectionLimit
+        exif: false,
+        base64: false,
+      });
+
+      if (res.canceled) return;
+      const rawUri = res.assets?.[0]?.uri;
+      if (!rawUri) return;
+
+      const { uri: smallUri } = await shrinkAndNormalize(rawUri);
+
+      setSlots((prev) => {
+        const i = prev.findIndex((s) => s === null);
+        const next = [...prev];
+        if (i === -1) next[next.length - 1] = smallUri;
+        else next[i] = smallUri;
+        return next;
+      });
+    } catch (e) {
+      console.warn("pickFromGallery error", e);
     }
-
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],        // <- new API
-      allowsEditing: false,
-      quality: 1,                    // pick original; compress after
-    //  allowsMultipleSelection: true, // default false; omit selectionLimit
-      exif: false,
-      base64: false,
-    });
-
-    if (res.canceled) return;
-    const rawUri = res.assets?.[0]?.uri;
-    if (!rawUri) return;
-
-    const { uri: smallUri } = await shrinkAndNormalize(rawUri);
-
-    setSlots((prev) => {
-      const i = prev.findIndex((s) => s === null);
-      const next = [...prev];
-      if (i === -1) next[next.length - 1] = smallUri;
-      else next[i] = smallUri;
-      return next;
-    });
-  } catch (e) {
-    console.warn("pickFromGallery error", e);
-  }
-};
+  };
 
   const PILL_HEIGHT = scale(84);
 
@@ -370,22 +370,22 @@ const pickFromGallery = async () => {
         ]}
       />
 
-      {/* Back chevron */}
-      <SafeAreaView style={RNStyleSheet.absoluteFill} pointerEvents="box-none">
+      {/* Back chevron (overlay, respects safe area) */}
+      <View style={RNStyleSheet.absoluteFill} pointerEvents="box-none">
         <Pressable
           hitSlop={12}
           onPress={() => {
             triggerHaptic("impactMedium");
             router.back();
           }}
-          style={styles.backBtn}
+          style={[styles.backBtn, { top: insets.top + 15 }]} // <= key change
         >
           <Image
             source={require("../../assets/images/chevron-left.webp")}
             style={styles.backIcon}
           />
         </Pressable>
-      </SafeAreaView>
+      </View>
 
       {/* Brackets */}
       <View
@@ -714,10 +714,11 @@ const styles = StyleSheet.create({
     borderColor: "#FFFFFF",
   },
   backBtn: {
+    position: "absolute",
+    left: 20,
     width: 40,
     height: 40,
-    marginTop: 15,
-    marginLeft: 20,
+    zIndex: 10, // keep it on top
   },
   backIcon: {
     width: 40,
