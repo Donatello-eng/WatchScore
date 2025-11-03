@@ -1,7 +1,7 @@
 // app/feed/watch-details.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import {
   View,
   Text,
@@ -13,7 +13,10 @@ import {
   Platform,
 } from "react-native";
 
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
@@ -38,11 +41,14 @@ import { API_BASE } from "@/config/api";
 import { authHeaders } from "@/auth/session";
 import { apiFetch } from "@/api/http";
 
-
 function decodeJsonParam<T = unknown>(v?: string | string[] | null): T | null {
   const raw = Array.isArray(v) ? v[0] : v;
   if (!raw) return null;
-  try { return JSON.parse(decodeURIComponent(raw)) as T; } catch { return null; }
+  try {
+    return JSON.parse(decodeURIComponent(raw)) as T;
+  } catch {
+    return null;
+  }
 }
 
 type SSEFrame = { event?: string; data?: any };
@@ -123,7 +129,9 @@ export function openAnalysisStreamXHR(
   // stopper for cleanup
   return () => {
     closed = true;
-    try { xhr.abort(); } catch { }
+    try {
+      xhr.abort();
+    } catch {}
   };
 }
 
@@ -131,6 +139,21 @@ export default function WatchDetails() {
   const { scale, vw, vh } = useR();
 
   const insets = useSafeAreaInsets();
+  // 🔹 Intercept swipe/hardware back and redirect to scanhistory
+  const navigation = useNavigation();
+  const allowProgrammaticExit = useRef(false);
+
+  useEffect(() => {
+    const unsub = (navigation as any).addListener("beforeRemove", (e: any) => {
+      if (allowProgrammaticExit.current) return; // let programmatic navigations pass
+
+      // Block the default pop (gesture/hardware) and go to scanhistory instead
+      e.preventDefault();
+      allowProgrammaticExit.current = true;
+      router.replace("/feed/scanhistory");
+    });
+    return unsub;
+  }, [navigation]);
 
   const sseStartedRef = useRef(false);
   const lastRunKeyRef = useRef<string | undefined>(undefined);
@@ -141,18 +164,39 @@ export default function WatchDetails() {
   const [err, setErr] = useState<string | null>(null);
   const [ai, setAi] = useState<Partial<WatchAI>>({});
 
-  const { id: idParam, data: packedData } = useLocalSearchParams<{ id?: string; data?: string }>();
+  const { id: idParam, data: packedData } = useLocalSearchParams<{
+    id?: string;
+    data?: string;
+  }>();
 
-  const packed = useMemo(() => decodeJsonParam<{ payload: { record: ServerWatch; ai: Partial<WatchAI> } }>(packedData), [packedData]);
+  const packed = useMemo(
+    () =>
+      decodeJsonParam<{
+        payload: { record: ServerWatch; ai: Partial<WatchAI> };
+      }>(packedData),
+    [packedData]
+  );
 
-  const ALL_SECTIONS = ["quick_facts", "overall", "movement_quality", "materials_build", "maintenance_risks", "value_for_money", "alternatives"];
+  const ALL_SECTIONS = [
+    "quick_facts",
+    "overall",
+    "movement_quality",
+    "materials_build",
+    "maintenance_risks",
+    "value_for_money",
+    "alternatives",
+  ];
 
-  function isFilled(v: any) { return v && typeof v === "object" && Object.keys(v).length > 0; }
+  function isFilled(v: any) {
+    return v && typeof v === "object" && Object.keys(v).length > 0;
+  }
 
   const missingSections = useMemo(() => {
-    const ms = ALL_SECTIONS.filter(s => !isFilled((ai as any)[s]));
-    if (ms.includes("quick_facts")) return ["quick_facts", ...ms.filter(s => s !== "quick_facts")];
-    if (ms.includes("overall")) return ["overall", ...ms.filter(s => s !== "overall")];
+    const ms = ALL_SECTIONS.filter((s) => !isFilled((ai as any)[s]));
+    if (ms.includes("quick_facts"))
+      return ["quick_facts", ...ms.filter((s) => s !== "quick_facts")];
+    if (ms.includes("overall"))
+      return ["overall", ...ms.filter((s) => s !== "overall")];
     return ms;
   }, [ai]);
   const stopRef = useRef<null | (() => void)>(null);
@@ -175,31 +219,46 @@ export default function WatchDetails() {
       const headers = await authHeaders(API_BASE);
       const url =
         `${API_BASE}/watches/${record.id}/analyze-stream` +
-        `?wait=1&timeout=45&sections=${encodeURIComponent(missingSections.join(","))}`;
+        `?wait=1&timeout=45&sections=${encodeURIComponent(
+          missingSections.join(",")
+        )}`;
 
-      stop = openAnalysisStreamXHR(url, ({ event, data }) => {
-        if (cancelled) return;
-        if (event === "section" && data?.section) {
-          const sec: string = data.section;
-          if (!requestedSectionsRef.current.has(sec)) return;
+      stop = openAnalysisStreamXHR(
+        url,
+        ({ event, data }) => {
+          if (cancelled) return;
+          if (event === "section" && data?.section) {
+            const sec: string = data.section;
+            if (!requestedSectionsRef.current.has(sec)) return;
 
-          const rawPayload = data.data?.[sec] ?? data.data;
-          const ok = rawPayload && typeof rawPayload === "object" &&
-            (sec !== "overall" || ("conclusion" in rawPayload && "score" in rawPayload));
-          if (!ok) return;
+            const rawPayload = data.data?.[sec] ?? data.data;
+            const ok =
+              rawPayload &&
+              typeof rawPayload === "object" &&
+              (sec !== "overall" ||
+                ("conclusion" in rawPayload && "score" in rawPayload));
+            if (!ok) return;
 
-          setAi(prev => (isFilled((prev as any)?.[sec]) ? prev : { ...(prev || {}), [sec]: rawPayload }));
-        } else if (event === "done") {
-          sseStartedRef.current = false;
-        }
-      }, { headers });
+            setAi((prev) =>
+              isFilled((prev as any)?.[sec])
+                ? prev
+                : { ...(prev || {}), [sec]: rawPayload }
+            );
+          } else if (event === "done") {
+            sseStartedRef.current = false;
+          }
+        },
+        { headers }
+      );
 
       stopRef.current = stop;
     })();
 
     return () => {
       cancelled = true;
-      try { stop?.(); } catch { }
+      try {
+        stop?.();
+      } catch {}
       sseStartedRef.current = false;
       stopRef.current = null;
     };
@@ -225,7 +284,13 @@ export default function WatchDetails() {
       throw e;
     }
     const text = await res.text();
-    console.log("[net] status", res.status, res.ok, "| ct:", res.headers.get("content-type"));
+    console.log(
+      "[net] status",
+      res.status,
+      res.ok,
+      "| ct:",
+      res.headers.get("content-type")
+    );
     console.log("[net] body(sample):", text.slice(0, 800));
     let json: any;
     try {
@@ -248,7 +313,9 @@ export default function WatchDetails() {
       setAi(packed.payload.ai ?? {});
       setLoading(false);
       setErr(null);
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
 
     // Otherwise, fetch by id
@@ -278,10 +345,15 @@ export default function WatchDetails() {
       setErr("Missing id and no packed data");
     }
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [API_BASE, idParam, packed, packedData]);
 
-  const dto = useMemo(() => (record ? toWatchCardDTO(record, ai) : null), [record, ai]);
+  const dto = useMemo(
+    () => (record ? toWatchCardDTO(record, ai) : null),
+    [record, ai]
+  );
   const overall = useMemo(() => toOverallScoreDTO(ai), [ai]);
   const movementDTO = useMemo(() => toMovementQualityDTO(ai), [ai]);
   const matDTO = useMemo(() => toMaterialsBuildDTO(ai), [ai]);
@@ -291,14 +363,24 @@ export default function WatchDetails() {
 
   if (loading) {
     return (
-      <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
+      <View
+        style={[
+          styles.root,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
         <ActivityIndicator />
       </View>
     );
   }
   if (err || !record) {
     return (
-      <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
+      <View
+        style={[
+          styles.root,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
         <Text style={{ color: "#333" }}>
           {err ? `Failed to load: ${err}` : "No data"}
         </Text>
@@ -335,8 +417,15 @@ export default function WatchDetails() {
           showsVerticalScrollIndicator={false}
         >
           {/* Back */}
-          <Pressable hitSlop={12} onPress={() => router.push("/feed/scanhistory")} style={styles.backBtn}>
-            <Image source={require("../../assets/images/chevron-left.webp")} style={styles.backIcon} />
+          <Pressable
+            hitSlop={12}
+            onPress={() => router.replace("/feed/scanhistory")}
+            style={styles.backBtn}
+          >
+            <Image
+              source={require("../../assets/images/chevron-left.webp")}
+              style={styles.backIcon}
+            />
           </Pressable>
 
           {dto && <WatchCard {...dto} vw={vw} scale={scale} />}
@@ -350,17 +439,28 @@ export default function WatchDetails() {
             scale={scale}
           />
 
-          <MovementQualityCard {...movementDTO} loading={!movementDTO || (movementDTO.scoreLetter === "-" && !movementDTO.scoreNumeric)} vw={vw} scale={scale} />
+          <MovementQualityCard
+            {...movementDTO}
+            loading={
+              !movementDTO ||
+              (movementDTO.scoreLetter === "-" && !movementDTO.scoreNumeric)
+            }
+            vw={vw}
+            scale={scale}
+          />
 
-          {matDTO && <MaterialsAndBuildCard {...matDTO} vw={vw} scale={scale} />}
-          {maintDTO && <MaintenanceAndRisksCard dto={maintDTO} vw={vw} scale={scale} />}
+          {matDTO && (
+            <MaterialsAndBuildCard {...matDTO} vw={vw} scale={scale} />
+          )}
+          {maintDTO && (
+            <MaintenanceAndRisksCard dto={maintDTO} vw={vw} scale={scale} />
+          )}
           {valueDTO && <ValueMoneyCard dto={valueDTO} vw={vw} scale={scale} />}
           {altDTO && <AlternativesCard dto={altDTO} vw={vw} scale={scale} />}
         </ScrollView>
       </SafeAreaView>
     </View>
   );
-
 }
 
 const styles = StyleSheet.create({
