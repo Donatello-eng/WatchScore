@@ -13,7 +13,7 @@ import GradeRing from "../../../app/components/gradeRing";            // updated
 import StatTile from "../../../app/components/statTile";
 import DotsEllipsis from "../loading/DotsEllipsis";
 import InfoOverlay from "app/components/InfoOverlay";
-import { StatTileSkeleton } from "../loading/skeletons";
+import { StatTileSkeleton } from "../../../app/components/skeletons";
 
 export type MaintenanceRisksDTO = {
   scoreNumeric: number;

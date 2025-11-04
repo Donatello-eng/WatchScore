@@ -5,7 +5,7 @@ import GradeRing from "../../../app/components/gradeRing";        // supports `l
 import StatTile from "../../../app/components/statTile";
 import InfoOverlay from "app/components/InfoOverlay";
 import DotsEllipsis from "@/components/loading/DotsEllipsis";
-import { StatTileSkeleton } from "../loading/skeletons";
+import { StatTileSkeleton } from "../../../app/components/skeletons";
 
 /** helpers */
 function capStart(s?: string | null) {

@@ -1,9 +1,10 @@
 // src/screens/ScanHistory.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    View, Text, StyleSheet, Image, Pressable, StatusBar,
-    FlatList, ActivityIndicator,
-    Platform
+    View, Text, StyleSheet, Pressable, StatusBar,
+    FlatList,
+    Platform,
+    Animated
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,12 +18,20 @@ import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Portal } from "@gorhom/portal";
+import { SkeletonBox, SkeletonCircle, SkeletonLine } from "app/components/skeletons";
 
-// --- minimal types used here ---
+import { thumbPrefetcher } from "@/services/thumbPrefetcher";
+import Thumb from "app/components/Thumb";
+import { getStableUri, bumpUri } from "@/services/stableThumbUri";
+import { takeBootRows } from "@/hooks/useWarmWatchesOnBoot";
+import { loadHistorySnapshot, saveHistorySnapshot } from "@/services/historySnapshot";
+import { Image as XImage } from "expo-image";
+
 type Money = { amount?: number | null; currency?: string | null };
 type WatchScore = { letter?: string; numeric?: number | null };
 type WatchRow = {
     id: number;
+    photoId?: number;
     thumb?: string | null;
     // optional AI bits; show placeholders if missing
     name?: string | null;
@@ -32,28 +41,7 @@ type WatchRow = {
     status?: string;
 };
 
-function Thumb({ uri, size }: { uri?: string | null; size: number }) {
-    return uri ? (
-        <Image
-            source={{ uri }}
-            style={{ width: size, height: size, borderRadius: size * 0.22 }}
-            resizeMode="cover"
-        />
-    ) : (
-        <View
-            style={{
-                width: size,
-                height: size,
-                borderRadius: size * 0.22,
-                backgroundColor: "rgba(0,0,0,0.06)",
-                alignItems: "center",
-                justifyContent: "center",
-            }}
-        >
-            <Ionicons name="watch-outline" size={Math.round(size * 0.44)} color="#9AA1AE" />
-        </View>
-    );
-}
+const skeletonColor = "rgba(0,0,0,0.08)";
 
 
 export default function ScanHistory() {
@@ -61,22 +49,83 @@ export default function ScanHistory() {
     const { scale, vw, vh } = useR();        // call once
     const s = scale;
     const EXTRA_TOP = s(70);
+    const ABOVE_FOLD = 6;
+
+    const bootRows = React.useRef<WatchRow[]>(
+        (takeBootRows() as WatchRow[] | null) ??
+        (loadHistorySnapshot() as WatchRow[] | null) ??
+        []
+    ).current;
 
     const [active, setActive] = useState<"camera" | "collection">("collection");
-    const [rows, setRows] = useState<WatchRow[] | null>(null);
-    const [loading, setLoading] = useState(true);
+
+    const [rows, setRows] = useState<WatchRow[] | null>(bootRows);
+    const [loading, setLoading] = useState(bootRows.length === 0);
+    const rowsRef = React.useRef<WatchRow[] | null>(bootRows);
+    useEffect(() => { rowsRef.current = rows; }, [rows]);
+
+    const isFetchingRef = React.useRef(false);
+
+    useEffect(() => {
+        if (!bootRows.length) return;
+        // Seed canonical map & warm ABOVE_FOLD immediately
+        const pairs = bootRows.slice(0, ABOVE_FOLD)
+            .map((it) => it.photoId && it.thumb ? { uri: it.thumb, key: `photo-${it.photoId}` } : null)
+            .filter(Boolean) as { uri: string; key: string }[];
+        for (const it of bootRows) {
+            if (it.photoId && it.thumb) bumpUri(it.photoId, it.thumb);
+        }
+        thumbPrefetcher.enqueue(pairs);
+        // no setLoading here; we’re already painting rows
+    }, []); // run once
+
+    function sameRow(a: WatchRow, b: WatchRow) {
+        return (
+            a.photoId === b.photoId &&
+            a.thumb === b.thumb &&
+            a.name === b.name &&
+            a.year === b.year &&
+            (a.score?.letter ?? "") === (b.score?.letter ?? "") &&
+            (a.score?.numeric ?? null) === (b.score?.numeric ?? null) &&
+            (a.price?.amount ?? null) === (b.price?.amount ?? null) &&
+            (a.price?.currency ?? "") === (b.price?.currency ?? "") &&
+            (a.status ?? "") === (b.status ?? "")
+        );
+    }
+
+    function mergeRows(prev: WatchRow[] | null, fetched: WatchRow[]): WatchRow[] {
+        const byId = new Map(fetched.map(r => [r.id, r]));
+        const out: WatchRow[] = [];
+        const seen = new Set<number>();
+
+        for (const p of (prev ?? [])) {
+            const f = byId.get(p.id);
+            if (f) {
+                out.push(sameRow(p, f) ? p : { ...p, ...f });
+                seen.add(p.id);
+            } else {
+                out.push(p);
+            }
+        }
+
+        const newOnes = fetched.filter(r => !seen.has(r.id)).sort((a, b) => b.id - a.id);
+        return newOnes.length ? [...newOnes, ...out] : out;
+    }
 
     const load = useCallback(async () => {
-        setLoading(true);
+        if (isFetchingRef.current) return;          // prevent overlap + focus spam
+        isFetchingRef.current = true;
+
+        // Show skeleton only if we truly had nothing before this fetch
+        setLoading(prev => prev || !(rowsRef.current && rowsRef.current.length));
+
         try {
-            // 1) list for ids + thumbs + basic AI fields (now provided by backend)
             const listRes = await apiFetch(`/watches`);
             const list = (await listRes.json()) as {
                 items: Array<{
                     id: number;
                     status?: string;
-                    photos?: { url?: string | null }[];
-                    // new fields from /watches
+                    photos?: { id: number; url?: string | null }[];
                     name?: string | null;
                     year?: number | null;
                     overallLetter?: string | null;
@@ -86,32 +135,51 @@ export default function ScanHistory() {
                 nextCursor?: number | null;
             };
 
-            const mapped: WatchRow[] = (list.items ?? []).map((it) => ({
-                id: it.id,
-                thumb: it.photos?.[0]?.url ?? null,
-                name: it.name ?? null,
-                year: it.year ?? null,
-                score:
-                    it.overallLetter || it.overallNumeric != null
+            const mapped: WatchRow[] = (list.items ?? []).map((it) => {
+                const p = it.photos?.[0];
+                return {
+                    id: it.id,
+                    photoId: p?.id,
+                    thumb: p?.url ?? null,
+                    name: it.name ?? null,
+                    year: it.year ?? null,
+                    score: it.overallLetter || it.overallNumeric != null
                         ? { letter: it.overallLetter ?? undefined, numeric: it.overallNumeric ?? null }
                         : null,
-                price: it.price ?? null,
-                status: it.status,
-            }));
+                    price: it.price ?? null,
+                    status: it.status,
+                };
+            });
 
-            setRows(mapped);
-            // if you want pagination later, keep list.nextCursor in state
+            setRows(prev => {
+                const merged = mergeRows(prev, mapped);
+                // persist for next mount
+                saveHistorySnapshot(merged);
+                return merged;
+            });
+
+            // seed and prefetch above the fold (non-blocking)
+            for (const it of list.items ?? []) {
+                const p = it?.photos?.[0];
+                if (p?.id && p?.url) bumpUri(p.id, p.url);
+            }
+            const pairs = (list.items ?? [])
+                .map((it) => {
+                    const p = it?.photos?.[0] as { id?: number; url?: string } | undefined;
+                    return p?.id && p?.url ? { uri: p.url, key: `photo-${p.id}` } : null;
+                })
+                .filter(Boolean) as { uri: string; key: string }[];
+            thumbPrefetcher.enqueue(pairs.slice(0, ABOVE_FOLD));
         } finally {
+            isFetchingRef.current = false;
             setLoading(false);
         }
-    }, []);
+    }, []); // <-- no rows here
 
-    useFocusEffect(
-        React.useCallback(() => {
-            load();                 // runs on first mount and every time screen refocuses
-            return () => { };        // no cleanup needed
-        }, [load])
-    );
+    useFocusEffect(React.useCallback(() => {
+        load();
+        return () => { };
+    }, [load]));
 
     // ---------- small formatters ----------
     function fmtPriceCompact(m?: Money | null) {
@@ -129,47 +197,47 @@ export default function ScanHistory() {
     const fmtScore = (s?: WatchScore | null) =>
         s?.letter ? `${s.letter}${s.numeric != null ? ` ${s.numeric}` : ""}` : "—";
 
+
     // ---------- card ----------
-    const Card = ({ item }: { item: WatchRow }) => (
-        <Pressable
-            onPress={() => {
-                triggerHaptic("impactLight");
-                router.push({ pathname: "/feed/watch-details", params: { id: String(item.id) } });
-            }}
-            style={[styles.card, { padding: s(14), borderRadius: s(28) }]}
-        >
-            {/* thumb */}
-            <Thumb uri={item.thumb} size={s(82)} />
+const Card = React.memo(
+  ({ item }: { item: WatchRow }) => (
+    <Pressable
+      onPress={() => {
+        triggerHaptic("impactLight");
+        router.push({ pathname: "/feed/watch-details", params: { id: String(item.id) } });
+      }}
+      style={[styles.card, { padding: s(14), borderRadius: s(28) }]}
+    >
+      <Thumb photoId={item.photoId} uri={item.thumb} size={s(82)} />
+     {/* debug={__DEV__} check this latter */} 
 
-            {/* text + pills */}
-            <View style={{ flex: 1 }}>
-                <Text
-                    numberOfLines={2}
-                    style={{ fontSize: s(18), fontFamily: Font.inter.extraBold, color: "#0F172A" }}
-                >
-                    {item.name ?? "Analyzing…"}
-                </Text>
-                <View style={{ flexDirection: "row", alignItems: "center", marginTop: s(6), gap: s(8) }}>
-                    <Pill text={fmtScore(item.score)} tone={item.score?.letter} />
-                    <Pill text={fmtPriceCompact(item.price)} />
-                    <Pill text={item.year ? String(item.year) : "—"} />
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={2} style={{ fontSize: s(18), fontFamily: Font.inter.extraBold, color: "#0F172A" }}>
+          {item.name ?? "Analyzing…"}
+        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", marginTop: s(6), gap: s(8) }}>
+          <Pill text={fmtScore(item.score)} tone={item.score?.letter} />
+          <Pill text={fmtPriceCompact(item.price)} />
+          <Pill text={item.year ? String(item.year) : "—"} />
+        </View>
+      </View>
 
-                </View>
-            </View>
+      <Ionicons name="chevron-forward" size={s(18)} color="#909090ff" />
+    </Pressable>
+  ),
+  (prev, next) => prev.item === next.item
+);
 
-            <Ionicons name="chevron-forward" size={s(18)} color="#909090ff" />
-        </Pressable>
-    );
 
     const EmptyState = () => (
         <>
             {/* Illustration area (your old design) */}
             <View style={[styles.illustration, { height: vh(52) }]} pointerEvents="none">
-                <Image
+                <XImage
                     source={require("../../assets/images/lefthand.webp")}
                     style={[styles.leftHand, { width: vw(45), height: vw(45), bottom: vh(13), left: -vw(0) }]}
                 />
-                <Image
+                <XImage
                     source={require("../../assets/images/righthand.webp")}
                     resizeMode="contain"
                     style={[styles.rightHand, { width: vw(90), height: vw(90), bottom: vh(0), right: -vw(22) }]}
@@ -185,12 +253,15 @@ export default function ScanHistory() {
         <FlatList
             data={data}
             keyExtractor={(it) => String(it.id)}
+            initialNumToRender={ABOVE_FOLD}
+            maxToRenderPerBatch={ABOVE_FOLD}
+            windowSize={3}
             contentContainerStyle={{ paddingHorizontal: vw(5), paddingBottom: insets.bottom + s(84), paddingTop: s(16), gap: s(12) }}
             renderItem={({ item }) => <Card item={item} />}
             showsVerticalScrollIndicator={false}
-            overScrollMode="always"            // <<< bring back Android stretch
-            nestedScrollEnabled                // keeps physics correct with overlays
-            removeClippedSubviews={false}      // avoids clipping with blurred overlay
+            overScrollMode="always"
+            nestedScrollEnabled
+            removeClippedSubviews={false}
         />
     );
 
@@ -198,6 +269,48 @@ export default function ScanHistory() {
     const showEmpty = !loading && (!rows || rows.length === 0);
     const ICON_SIZE = scale(28);
 
+
+    const SkeletonCard = () => (
+        <View style={[styles.card, { padding: s(14), borderRadius: s(28) }]}>
+            {/* thumb */}
+            <SkeletonBox width={s(82)} height={s(82)} borderRadius={s(82) * 0.22} color={skeletonColor} />
+
+            {/* text + pills */}
+            <View style={{ flex: 1 }}>
+                {/* title two lines */}
+                <SkeletonLine width={vw(60)} height={s(18)} radius={6} color={skeletonColor} />
+                <SkeletonLine width={vw(42)} height={s(16)} radius={6} color={skeletonColor} style={{ marginTop: s(8) }} />
+
+                {/* three chips */}
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: s(10), gap: s(8) }}>
+                    <SkeletonBox width={s(58)} height={s(26)} borderRadius={999} color={skeletonColor} />
+                    <SkeletonBox width={s(62)} height={s(26)} borderRadius={999} color={skeletonColor} />
+                    <SkeletonBox width={s(46)} height={s(26)} borderRadius={999} color={skeletonColor} />
+                </View>
+            </View>
+
+            {/* chevron stub */}
+            <SkeletonCircle size={s(18)} />
+        </View>
+    );
+
+    const SkeletonList = () => (
+        <FlatList
+            data={Array.from({ length: 8 }, (_, i) => i)}
+            keyExtractor={(i) => `sk-${i}`}
+            contentContainerStyle={{
+                paddingHorizontal: vw(5),
+                paddingBottom: insets.bottom + s(84),
+                paddingTop: s(16),
+                gap: s(12),
+            }}
+            renderItem={() => <SkeletonCard />}
+            showsVerticalScrollIndicator={false}
+            overScrollMode="always"
+            nestedScrollEnabled
+            removeClippedSubviews={false}
+        />
+    );
     const titleStyle = [
         styles.title,
         Platform.OS === "android"
@@ -253,7 +366,7 @@ export default function ScanHistory() {
                                 hitSlop={scale(8)}
                                 style={{ width: ICON_SIZE, height: ICON_SIZE, alignItems: "center", justifyContent: "center" }}
                             >
-                                <Image
+                                <XImage
                                     source={require("../../assets/images/info.webp")}
                                     style={{ width: ICON_SIZE, height: ICON_SIZE, tintColor: "#525252" }}
                                     resizeMode="contain"
@@ -263,11 +376,8 @@ export default function ScanHistory() {
                     </View>
                 </View>
 
-                {/* Body */}
                 {loading ? (
-                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                        <ActivityIndicator />
-                    </View>
+                    <SkeletonList />
                 ) : showEmpty ? (
                     <EmptyState />
                 ) : (
@@ -298,7 +408,7 @@ export default function ScanHistory() {
                                 style={[styles.navItem, active === "camera" && styles.navItemActive]}
                                 hitSlop={8}
                             >
-                                <Image source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                <XImage source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
                                 <Text style={[styles.navItemLabel, active === "camera" && styles.navItemLabelActive]}>Camera</Text>
                             </Pressable>
 
@@ -307,7 +417,7 @@ export default function ScanHistory() {
                                 style={[styles.navItem, { paddingHorizontal: 15 }, active === "collection" && styles.navItemActive]}
                                 hitSlop={8}
                             >
-                                <Image source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                <XImage source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
                                 <Text style={[styles.navItemLabel, active === "collection" && styles.navItemLabelActive, { fontFamily: Font.inter.semiBold, fontSize: 11 }]}>
                                     Collection
                                 </Text>

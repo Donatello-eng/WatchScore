@@ -13,7 +13,7 @@ import StatTile from "../../../app/components/statTile";
 import GradeRing from "../../../app/components/gradeRing";          // supports `loading`
 import DotsEllipsis from "@/components/loading/DotsEllipsis";
 import InfoOverlay from "app/components/InfoOverlay";
-import { StatTileSkeleton } from "../loading/skeletons";
+import { StatTileSkeleton } from "../../../app/components/skeletons";
 
 // ---- DTO + props ----
 export type MaterialsBuildDTO = {

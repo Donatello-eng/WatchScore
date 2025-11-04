@@ -19,7 +19,7 @@ export function usePulse({ from = 0.5, to = 1, durationMs = 700 }: PulseOpts = {
 }
 
 type BoxProps = {
-  width?: number | string; // supports numbers or percentages
+  width?: number | string;
   height: number;
   borderRadius?: number;
   style?: StyleProp<ViewStyle>;
@@ -28,10 +28,6 @@ type BoxProps = {
   accessibilityLabel?: string;
 };
 
-/**
- * Renders shape on a plain View (safe for % widths).
- * If animated, wraps it in an Animated.View that only animates opacity.
- */
 export function SkeletonBox({
   width,
   height,
