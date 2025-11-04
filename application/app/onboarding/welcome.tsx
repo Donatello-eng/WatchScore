@@ -19,6 +19,7 @@ import { Image } from "expo-image";
 import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
 import { triggerHaptic } from "../../hooks/haptics";
+import { FloatingWatchLeft, FloatingWatchRight } from "@/components/utils/floatingWatch";
 
 type Props = {
   onGetStarted?: () => void;
@@ -162,38 +163,25 @@ const Welcome: React.FC<Props> = ({
         <Text style={styles.brand}>WatchScore</Text>
 
         {/* Decorative watches with floating animation */}
-        <AnimatedImage
+        <FloatingWatchLeft
           source={require("../../assets/images/watch-left.webp")}
-          style={[
-            styles.watchImgLeftBase,
-            {
-              width: R.vw(34),
-              aspectRatio: 1,
-              top: R.vh(12),
-              left: -R.vw(3),
-              transform: [
-                { translateY: leftTranslateY },
-                { rotate: leftRotate },
-              ],
-            },
-          ]}
+          width={R.vw(34)}
+          aspectRatio={1}
+          floatPx={R.scale(15)}
+          rotateRangeDeg={5}
+          durationMs={2800}
+          delayMs={0}
+          containerStyle={{ top: R.vh(12), left: -R.vw(3) }}
         />
-
-        <AnimatedImage
+        <FloatingWatchRight
           source={require("../../assets/images/watch-right.webp")}
-          style={[
-            styles.watchImgRightBase,
-            {
-              width: R.vw(28),
-              aspectRatio: 1,
-              right: -R.vw(2),
-              bottom: R.vh(40),
-              transform: [
-                { translateY: rightTranslateY },
-                { rotate: rightRotate },
-              ],
-            },
-          ]}
+          width={R.vw(28)}
+          aspectRatio={1}
+          floatPx={R.scale(15)}
+          rotateRangeDeg={5}
+          durationMs={2800}
+          delayMs={300}
+          containerStyle={{ right: -R.vw(2), bottom: R.vh(40) }}
         />
 
         {/* Centered headline area */}

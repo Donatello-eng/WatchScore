@@ -23,7 +23,7 @@ import { SkeletonBox, SkeletonCircle, SkeletonLine } from "app/components/skelet
 import { thumbPrefetcher } from "@/services/thumbPrefetcher";
 import Thumb from "app/components/Thumb";
 import { getStableUri, bumpUri } from "@/services/stableThumbUri";
-import { takeBootRows } from "@/hooks/useWarmWatchesOnBoot";
+import { takeBootRows, getBootMeta } from "@/hooks/useWarmWatchesOnBoot";
 import { loadHistorySnapshot, saveHistorySnapshot } from "@/services/historySnapshot";
 import { Image as XImage } from "expo-image";
 
@@ -57,22 +57,35 @@ export default function ScanHistory() {
         []
     ).current;
 
+
+    const meta = getBootMeta(); // { stage: "snapshot"|"network"|"none", netCount: number|null }
+    const seedBoot = (takeBootRows() as WatchRow[] | null); // may be [] (authoritative empty), array, or null
+    const authoritativeEmpty = meta.stage === "network" && meta.netCount === 0;
+    // If network said empty, lock to [] on first paint. Else fall back to whatever boot gave us (or snapshot if you still want).
+    const initialRows: WatchRow[] = authoritativeEmpty ? [] : (seedBoot ?? (loadHistorySnapshot() as WatchRow[] | null) ?? []);
+
     const [active, setActive] = useState<"camera" | "collection">("collection");
 
-    const [rows, setRows] = useState<WatchRow[] | null>(bootRows);
-    const [loading, setLoading] = useState(bootRows.length === 0);
-    const rowsRef = React.useRef<WatchRow[] | null>(bootRows);
-    useEffect(() => { rowsRef.current = rows; }, [rows]);
+   // const [rows, setRows] = useState<WatchRow[] | null>(bootRows);
+  //  const [loading, setLoading] = useState(bootRows.length === 0);
+  //  const rowsRef = React.useRef<WatchRow[] | null>(bootRows);
+  //  useEffect(() => { rowsRef.current = rows; }, [rows]);
+
+    const [rows, setRows] = useState<WatchRow[] | null>(initialRows);
+    // If we’re showing forced empty from prior network, there’s nothing to “load” visually.
+    const [loading, setLoading] = useState(!authoritativeEmpty && initialRows.length === 0);
+    const rowsRef = React.useRef<WatchRow[] | null>(initialRows);
 
     const isFetchingRef = React.useRef(false);
 
     useEffect(() => {
-        if (!bootRows.length) return;
+        const warmSeed = initialRows;
+        if (!warmSeed.length) return;
         // Seed canonical map & warm ABOVE_FOLD immediately
-        const pairs = bootRows.slice(0, ABOVE_FOLD)
+        const pairs = warmSeed.slice(0, ABOVE_FOLD)
             .map((it) => it.photoId && it.thumb ? { uri: it.thumb, key: `photo-${it.photoId}` } : null)
             .filter(Boolean) as { uri: string; key: string }[];
-        for (const it of bootRows) {
+        for (const it of warmSeed) {
             if (it.photoId && it.thumb) bumpUri(it.photoId, it.thumb);
         }
         thumbPrefetcher.enqueue(pairs);
@@ -117,7 +130,8 @@ export default function ScanHistory() {
         isFetchingRef.current = true;
 
         // Show skeleton only if we truly had nothing before this fetch
-        setLoading(prev => prev || !(rowsRef.current && rowsRef.current.length));
+        if (!authoritativeEmpty)
+            setLoading(prev => prev || !(rowsRef.current && rowsRef.current.length));
 
         try {
             const listRes = await apiFetch(`/watches`);
@@ -199,34 +213,34 @@ export default function ScanHistory() {
 
 
     // ---------- card ----------
-const Card = React.memo(
-  ({ item }: { item: WatchRow }) => (
-    <Pressable
-      onPress={() => {
-        triggerHaptic("impactLight");
-        router.push({ pathname: "/feed/watch-details", params: { id: String(item.id) } });
-      }}
-      style={[styles.card, { padding: s(14), borderRadius: s(28) }]}
-    >
-      <Thumb photoId={item.photoId} uri={item.thumb} size={s(82)} />
-     {/* debug={__DEV__} check this latter */} 
+    const Card = React.memo(
+        ({ item }: { item: WatchRow }) => (
+            <Pressable
+                onPress={() => {
+                    triggerHaptic("impactLight");
+                    router.push({ pathname: "/feed/watch-details", params: { id: String(item.id) } });
+                }}
+                style={[styles.card, { padding: s(14), borderRadius: s(28) }]}
+            >
+                <Thumb photoId={item.photoId} uri={item.thumb} size={s(82)} />
+                {/* debug={__DEV__} check this latter */}
 
-      <View style={{ flex: 1 }}>
-        <Text numberOfLines={2} style={{ fontSize: s(18), fontFamily: Font.inter.extraBold, color: "#0F172A" }}>
-          {item.name ?? "Analyzing…"}
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", marginTop: s(6), gap: s(8) }}>
-          <Pill text={fmtScore(item.score)} tone={item.score?.letter} />
-          <Pill text={fmtPriceCompact(item.price)} />
-          <Pill text={item.year ? String(item.year) : "—"} />
-        </View>
-      </View>
+                <View style={{ flex: 1 }}>
+                    <Text numberOfLines={2} style={{ fontSize: s(18), fontFamily: Font.inter.extraBold, color: "#0F172A" }}>
+                        {item.name ?? "Analyzing…"}
+                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginTop: s(6), gap: s(8) }}>
+                        <Pill text={fmtScore(item.score)} tone={item.score?.letter} />
+                        <Pill text={fmtPriceCompact(item.price)} />
+                        <Pill text={item.year ? String(item.year) : "—"} />
+                    </View>
+                </View>
 
-      <Ionicons name="chevron-forward" size={s(18)} color="#909090ff" />
-    </Pressable>
-  ),
-  (prev, next) => prev.item === next.item
-);
+                <Ionicons name="chevron-forward" size={s(18)} color="#909090ff" />
+            </Pressable>
+        ),
+        (prev, next) => prev.item === next.item
+    );
 
 
     const EmptyState = () => (
@@ -266,7 +280,8 @@ const Card = React.memo(
     );
 
     // ---------- UI ----------
-    const showEmpty = !loading && (!rows || rows.length === 0);
+    //const showEmpty = !loading && (!rows || rows.length === 0);
+    const showEmpty = (authoritativeEmpty && true) || (!loading && (!rows || rows.length === 0));
     const ICON_SIZE = scale(28);
 
 
@@ -376,7 +391,9 @@ const Card = React.memo(
                     </View>
                 </View>
 
-                {loading ? (
+                {authoritativeEmpty ? (
+                    <EmptyState />
+                ) : loading ? (
                     <SkeletonList />
                 ) : showEmpty ? (
                     <EmptyState />

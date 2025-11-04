@@ -165,7 +165,6 @@ export default function Guide() {
   // Core: programmatic page change using native scroll + tiny wiggle on the stage
   const runNext = async (dir: 1 | -1) => {
     if (animatingRef.current || w === 0) return;
-
     if (dir > 0 && index >= total - 1) {
       try {
         await AsyncStorage.multiSet([
