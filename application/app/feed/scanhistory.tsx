@@ -253,7 +253,7 @@ export default function ScanHistory() {
                 />
                 <XImage
                     source={require("../../assets/images/righthand.webp")}
-                    resizeMode="contain"
+                    contentFit="contain"
                     style={[styles.rightHand, { width: vw(90), height: vw(90), bottom: vh(0), right: -vw(22) }]}
                 />
             </View>
@@ -384,7 +384,7 @@ export default function ScanHistory() {
                                 <XImage
                                     source={require("../../assets/images/info.webp")}
                                     style={{ width: ICON_SIZE, height: ICON_SIZE, tintColor: "#525252" }}
-                                    resizeMode="contain"
+                                    contentFit="contain"
                                 />
                             </Pressable>
                         </View>
@@ -425,7 +425,7 @@ export default function ScanHistory() {
                                 style={[styles.navItem, active === "camera" && styles.navItemActive]}
                                 hitSlop={8}
                             >
-                                <XImage source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                <XImage source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} contentFit="contain" />
                                 <Text style={[styles.navItemLabel, active === "camera" && styles.navItemLabelActive]}>Camera</Text>
                             </Pressable>
 
@@ -434,7 +434,7 @@ export default function ScanHistory() {
                                 style={[styles.navItem, { paddingHorizontal: 15 }, active === "collection" && styles.navItemActive]}
                                 hitSlop={8}
                             >
-                                <XImage source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                <XImage source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} contentFit="contain" />
                                 <Text style={[styles.navItemLabel, active === "collection" && styles.navItemLabelActive, { fontFamily: Font.inter.semiBold, fontSize: 11 }]}>
                                     Collection
                                 </Text>
