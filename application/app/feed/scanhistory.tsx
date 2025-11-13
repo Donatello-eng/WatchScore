@@ -4,7 +4,8 @@ import {
     View, Text, StyleSheet, Pressable, StatusBar,
     FlatList,
     Platform,
-    Animated
+    Animated,
+    Image
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,7 +26,6 @@ import Thumb from "app/components/Thumb";
 import { getStableUri, bumpUri } from "@/services/stableThumbUri";
 import { takeBootRows, getBootMeta } from "@/hooks/useWarmWatchesOnBoot";
 import { loadHistorySnapshot, saveHistorySnapshot } from "@/services/historySnapshot";
-import { Image as XImage } from "expo-image";
 
 type Money = { amount?: number | null; currency?: string | null };
 type WatchScore = { letter?: string; numeric?: number | null };
@@ -247,13 +247,13 @@ export default function ScanHistory() {
         <>
             {/* Illustration area (your old design) */}
             <View style={[styles.illustration, { height: vh(52) }]} pointerEvents="none">
-                <XImage
+                <Image
                     source={require("../../assets/images/lefthand.webp")}
                     style={[styles.leftHand, { width: vw(45), height: vw(45), bottom: vh(13), left: -vw(0) }]}
                 />
-                <XImage
+                <Image
                     source={require("../../assets/images/righthand.webp")}
-                    contentFit="contain"
+                    resizeMode="contain"
                     style={[styles.rightHand, { width: vw(90), height: vw(90), bottom: vh(0), right: -vw(22) }]}
                 />
             </View>
@@ -381,10 +381,10 @@ export default function ScanHistory() {
                                 hitSlop={scale(8)}
                                 style={{ width: ICON_SIZE, height: ICON_SIZE, alignItems: "center", justifyContent: "center" }}
                             >
-                                <XImage
+                                <Image
                                     source={require("../../assets/images/info.webp")}
                                     style={{ width: ICON_SIZE, height: ICON_SIZE, tintColor: "#525252" }}
-                                    contentFit="contain"
+                                    resizeMode="contain"
                                 />
                             </Pressable>
                         </View>
@@ -425,7 +425,7 @@ export default function ScanHistory() {
                                 style={[styles.navItem, active === "camera" && styles.navItemActive]}
                                 hitSlop={8}
                             >
-                                <XImage source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} contentFit="contain" />
+                                <Image source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
                                 <Text style={[styles.navItemLabel, active === "camera" && styles.navItemLabelActive]}>Camera</Text>
                             </Pressable>
 
@@ -434,7 +434,7 @@ export default function ScanHistory() {
                                 style={[styles.navItem, { paddingHorizontal: 15 }, active === "collection" && styles.navItemActive]}
                                 hitSlop={8}
                             >
-                                <XImage source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} contentFit="contain" />
+                                <Image source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
                                 <Text style={[styles.navItemLabel, active === "collection" && styles.navItemLabelActive, { fontFamily: Font.inter.semiBold, fontSize: 11 }]}>
                                     Collection
                                 </Text>

@@ -18,6 +18,6 @@ export const guideSlides: GuideSlide[] = [
   {
     image: require("../assets/images/find.webp"),
     title: "Find the\nReal\nValue",
-    body: "Explore the ratings for more\nthan 6000 watches.",
+    body: "Explore the ratings for more\nthan 50000 watches.",
   },
 ];

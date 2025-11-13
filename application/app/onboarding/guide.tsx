@@ -12,9 +12,9 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   useWindowDimensions,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Image } from "expo-image";
 import { Asset } from "expo-asset";
 import { router } from "expo-router";
 import { Font } from "../../hooks/fonts";
@@ -36,10 +36,9 @@ async function prefetchAny(src: any): Promise<void> {
     }
     if (typeof src === "number") {
       const asset = Asset.fromModule(src);
-      await asset.downloadAsync(); // no-op if bundled, ensures ready
+      await asset.downloadAsync();
     }
   } catch {
-    // swallow; prefetch is best-effort
   }
 }
 
@@ -69,21 +68,19 @@ const Slide = React.memo(function Slide({
 }: SlideProps) {
   const s = guideSlides[clamp(i, 0, total - 1)];
   const hot = i === index || i === index - 1 || i === index + 1;
+  const heroSize = Math.min(w * 0.55, R.vh(32)); // 55% of width, capped by ~⅓ of height
 
   return (
     <View style={[styles.pane, { width: w }]}>
       <Image
         source={s.image}
-        transition={0}
-        cachePolicy="memory-disk"
-        priority={hot ? "high" : "normal"}
-        recyclingKey={String(i)}
         style={{
-          width: R.vw(65),
-          aspectRatio: 1,
+          width: heroSize,
+          height: heroSize,
           alignSelf: "center",
           marginTop: R.vh(3),
         }}
+        resizeMode="contain"
       />
       <View style={{ marginTop: R.vh(4), paddingHorizontal: R.vw(22) }}>
         <Text
@@ -125,33 +122,27 @@ export default function Guide() {
   const scrollRef = React.useRef<ScrollView | null>(null);
   const animatingRef = React.useRef(false);
 
-  // The tiny stage wiggle (adds the “push right → settle right” feel)
   const wiggleTX = React.useRef(new Animated.Value(0)).current;
 
-  // Distances for the wiggle (in px)
-  const nudge = Math.round(w * 0.1); // small push to the right
-  const overL = Math.round(w * 0.15); // slight overshoot to the left before settling
+  const nudge = Math.round(w * 0.1);
+  const overL = Math.round(w * 0.15);
 
   const titleSize = R.scale(51);
   const titleLine = R.scale(61);
 
-  // Prefetch everything once (small slidesets are typical for onboarding)
   React.useEffect(() => {
     guideSlides.forEach((s) => prefetchAny(s.image));
   }, []);
 
-  // Track latest index in a ref to avoid width-effect running on every index change
   React.useEffect(() => {
     indexRef.current = index;
   }, [index]);
 
-  // Keep ScrollView positioned at the current page on width changes (e.g., rotation)
   React.useEffect(() => {
     if (!scrollRef.current || w === 0) return;
     scrollRef.current.scrollTo({ x: indexRef.current * w, animated: false });
   }, [w]);
 
-  // Handle final index update after a native scroll
   const onMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const newIdx = clamp(
       Math.round(e.nativeEvent.contentOffset.x / w),
@@ -162,21 +153,21 @@ export default function Guide() {
     animatingRef.current = false;
   };
 
-  // Core: programmatic page change using native scroll + tiny wiggle on the stage
   const runNext = async (dir: 1 | -1) => {
     if (animatingRef.current || w === 0) return;
+
     if (dir > 0 && index >= total - 1) {
       try {
         await AsyncStorage.multiSet([
           ["hasOnboarded", "true"],
-          ["onboardingDone", "1"], // legacy key your offline screen checks
+          ["onboardingDone", "1"],
         ]);
       } finally {
-        // navigate only after the flag is persisted
         router.replace("/feed/scanhistory");
       }
       return;
     }
+
     if (dir < 0 && index <= 0) {
       router.back();
       return;
@@ -186,7 +177,6 @@ export default function Guide() {
     const target = index + dir;
     const targetX = target * w;
 
-    // Phase 1: tiny push right (or left for back)
     const p1 = Animated.timing(wiggleTX, {
       toValue: dir > 0 ? nudge : -nudge,
       duration: 100,
@@ -194,7 +184,6 @@ export default function Guide() {
       useNativeDriver: true,
     });
 
-    // Phase 2: while we wiggle back past center, trigger native scroll to the target page
     const p2 = Animated.timing(wiggleTX, {
       toValue: dir > 0 ? -overL : overL,
       duration: 220,
@@ -202,7 +191,6 @@ export default function Guide() {
       useNativeDriver: true,
     });
 
-    // Phase 3: soft settle back toward 0
     const p3 = Animated.spring(wiggleTX, {
       toValue: 0,
       damping: 12,
@@ -211,9 +199,7 @@ export default function Guide() {
       useNativeDriver: true,
     });
 
-    // Start phase 1, then kick off phase 2 + native scroll, then settle.
     p1.start(() => {
-      // Trigger the native scroll exactly as phase 2 starts. Native handles the heavy work.
       scrollRef.current?.scrollTo({ x: targetX, y: 0, animated: true });
       p2.start(() => p3.start());
     });
@@ -229,7 +215,6 @@ export default function Guide() {
     >
       <StatusBar barStyle="dark-content" />
 
-      {/* Header */}
       <View style={styles.topRow}>
         <Pressable
           hitSlop={12}
@@ -244,6 +229,7 @@ export default function Guide() {
           <Image
             source={require("../../assets/images/chevron-left.webp")}
             style={styles.backIcon}
+            resizeMode="contain"
           />
         </Pressable>
 
@@ -251,14 +237,11 @@ export default function Guide() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Stage with tiny wiggle transform; ScrollView inside handles the page motion natively */}
       <Animated.View
         style={[
           styles.stage,
           {
             transform: [{ translateX: wiggleTX }],
-            // NOTE: intentionally NOT forcing rasterization on either platform
-            // to avoid layer promotion/demotion flicker at the end of the scroll.
           },
         ]}
       >
@@ -266,16 +249,13 @@ export default function Guide() {
           ref={scrollRef}
           horizontal
           pagingEnabled
-          scrollEnabled={false} // we control it via buttons
+          scrollEnabled={false}
           showsHorizontalScrollIndicator={false}
           scrollEventThrottle={16}
           onMomentumScrollEnd={onMomentumEnd}
-          // prevent clipping artefacts when pages are animating
           removeClippedSubviews={false}
-          // snap settings help Android stay crisp
           snapToInterval={w || undefined}
           decelerationRate="fast"
-          // IMPORTANT: do not pass contentOffset after mount; initial-only prop causes a layout nudge
         >
           {guideSlides.map((_, i) => (
             <Slide
@@ -292,7 +272,6 @@ export default function Guide() {
         </ScrollView>
       </Animated.View>
 
-      {/* CTA */}
       <View
         style={{
           marginTop: "auto",
@@ -314,6 +293,7 @@ export default function Guide() {
           <Image
             source={require("../../assets/images/chevron-left.webp")}
             style={styles.nextIcon}
+            resizeMode="contain"
           />
         </Pressable>
       </View>
@@ -347,14 +327,12 @@ const styles = StyleSheet.create({
     tintColor: "#3A3A3A",
   },
 
-  // Stage holds the horizontally-paged content
   stage: {
     flex: 1,
     overflow: "hidden",
     backgroundColor: "#FFF",
   },
 
-  // Each pane = full screen width
   pane: {
     height: "100%",
   },

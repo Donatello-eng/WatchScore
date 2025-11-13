@@ -7,15 +7,11 @@ import {
   Pressable,
   Linking,
   StatusBar,
-  ColorValue,
-  Animated,
-  Easing,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { Image } from "expo-image";
 import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
 import { triggerHaptic } from "../../hooks/haptics";
@@ -27,15 +23,9 @@ type Props = {
   onOpenPrivacy?: () => void;
 };
 
-// Background gradient colors (typed as a readonly tuple)
 const BG_COLORS = ["#FEF9F4", "#FFE1D1", "#EEC7FF", "#EEF0FF"] as const;
 
 const HEADLINE = `Every\nwatch\ntells a\nstory.`;
-
-type TupleColors = readonly [ColorValue, ColorValue, ...ColorValue[]];
-
-// Make an Animated version of Expo Image
-const AnimatedImage = Animated.createAnimatedComponent(Image);
 
 const Welcome: React.FC<Props> = ({
   onGetStarted,
@@ -44,57 +34,9 @@ const Welcome: React.FC<Props> = ({
 }) => {
   const R = useR();
 
-  // --- Floating animations ---
-  const leftProg = useRef(new Animated.Value(0)).current;
-  const rightProg = useRef(new Animated.Value(0)).current;
+  const leftSize = R.scale(150);
+  const rightSize = R.scale(130);
 
-  useEffect(() => {
-    // Helper to run a yoyo loop
-    const loopYoyo = (val: Animated.Value, duration = 2600, delay = 0) => {
-      const seq = Animated.sequence([
-        Animated.timing(val, {
-          toValue: 1,
-          duration: duration / 2,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-          delay,
-        }),
-        Animated.timing(val, {
-          toValue: 0,
-          duration: duration / 2,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]);
-      // Smooth, infinite float
-      Animated.loop(seq, { resetBeforeIteration: true }).start();
-    };
-
-    // Slightly different tempo/phase so they don't move in sync
-    loopYoyo(leftProg, 2800, 0);
-    loopYoyo(rightProg, 2800, 300);
-  }, [leftProg, rightProg]);
-
-  // Map progress → motion
-  const leftTranslateY = leftProg.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -R.scale(15)], // up to ~10px up
-  });
-  const leftRotate = leftProg.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["-2.5deg", "2.5deg"],
-  });
-
-  const rightTranslateY = rightProg.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -R.scale(15)], // slightly smaller float
-  });
-  const rightRotate = rightProg.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["2.5deg", "-2.5deg"], // opposite direction for variety
-  });
-
-  // One gradient for the entire phrase
   const SingleGradientHeadline = () => (
     <MaskedView
       maskElement={
@@ -116,7 +58,6 @@ const Welcome: React.FC<Props> = ({
         end={{ x: 0.5, y: 1 }}
         colors={["#FE2D2D", "#4F1CB4"] as const}
       >
-        {/* Invisible text sets the gradient’s draw area */}
         <Text
           style={[
             styles.h1,
@@ -159,24 +100,21 @@ const Welcome: React.FC<Props> = ({
       >
         <StatusBar barStyle="dark-content" />
 
-        {/* Brand */}
         <Text style={styles.brand}>WatchScore</Text>
 
-        {/* Decorative watches with floating animation */}
         <FloatingWatchLeft
           source={require("../../assets/images/watch-left.webp")}
-          width={R.vw(34)}
-          aspectRatio={1}
+          size={leftSize}
           floatPx={R.scale(15)}
           rotateRangeDeg={5}
           durationMs={2800}
           delayMs={0}
           containerStyle={{ top: R.vh(12), left: -R.vw(3) }}
         />
+
         <FloatingWatchRight
           source={require("../../assets/images/watch-right.webp")}
-          width={R.vw(28)}
-          aspectRatio={1}
+          size={rightSize}
           floatPx={R.scale(15)}
           rotateRangeDeg={5}
           durationMs={2800}
@@ -184,14 +122,12 @@ const Welcome: React.FC<Props> = ({
           containerStyle={{ right: -R.vw(2), bottom: R.vh(40) }}
         />
 
-        {/* Centered headline area */}
         <View style={styles.center}>
           <View style={styles.headlineWrap}>
             <SingleGradientHeadline />
           </View>
         </View>
 
-        {/* CTA */}
         <View style={styles.ctaWrap}>
           <Pressable
             onPress={() => {
@@ -246,7 +182,6 @@ export default Welcome;
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safe: { flex: 1, paddingHorizontal: 24 },
-
   brand: {
     fontFamily: Font.K2,
     fontSize: 20,
@@ -255,18 +190,14 @@ const styles = StyleSheet.create({
     marginTop: 35,
     alignSelf: "center",
   },
-
-  // Center stack
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-
   headlineWrap: {
     alignItems: "center",
   },
-
   h1: {
     fontFamily: Font.inter.extraBold,
     letterSpacing: 0,
@@ -275,12 +206,8 @@ const styles = StyleSheet.create({
   h1Invisible: {
     opacity: 0,
   },
-
-  // Images
   watchImgLeftBase: { position: "absolute" },
   watchImgRightBase: { position: "absolute" },
-
-  // CTA + legal
   ctaWrap: {
     marginTop: "auto",
     alignItems: "center",

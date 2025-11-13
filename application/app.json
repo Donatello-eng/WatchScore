@@ -3,7 +3,7 @@
     "name": "WatchScore",
     "slug": "WatchScore",
     "scheme": "watchscore",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
       "backgroundColor": "#461647"
     },
     "ios": {
-      "buildNumber": "3",
+      "buildNumber": "5",
       "bundleIdentifier": "com.bumpgames.watchscore",
       "supportsTablet": true,
       "infoPlist": {
@@ -23,7 +23,7 @@
       }
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 5,
       "package": "com.bumpgames.watchscore",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
