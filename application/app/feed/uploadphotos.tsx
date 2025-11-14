@@ -208,8 +208,8 @@ export default function UploadPhotos() {
 
   const TILE_SCALE = 1.08;
 
-  const TILE1_W_RATIO = 0.48;  
-  const TILE2_W_RATIO = 0.66;  
+  const TILE1_W_RATIO = 0.48;
+  const TILE2_W_RATIO = 0.66;
   const TILE1_CAP = 392 * TILE_SCALE; // was 360
   const TILE2_CAP = 456 * TILE_SCALE; // was 420
 
@@ -261,7 +261,7 @@ export default function UploadPhotos() {
           hitSlop={12}
           onPress={() => {
             triggerHaptic("impactMedium");
-            router.back();
+            router.replace("/feed/scanhistory");
           }}
           style={styles.backBtn}
         >

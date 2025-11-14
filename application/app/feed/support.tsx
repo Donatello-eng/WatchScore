@@ -73,7 +73,8 @@ export default function SupportScreen() {
         hitSlop={12}
         onPress={() => {
           triggerHaptic("impactMedium");
-          router.back();
+          router.replace("/feed/scanhistory");
+          // router.back();
         }}
         style={styles.backBtn}
       >
