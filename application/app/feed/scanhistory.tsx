@@ -43,6 +43,75 @@ type WatchRow = {
 
 const skeletonColor = "rgba(0,0,0,0.08)";
 
+// ---------- small formatters ----------
+function fmtPriceCompact(m?: Money | null) {
+    if (!m || m.amount == null || !m.currency) return "—";
+    const n = Number(m.amount);
+    if (!isFinite(n)) return "—";
+    const abs = Math.abs(n);
+
+    if (abs >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(abs < 10_000_000_000 ? 1 : 0)} B ${m.currency}`;
+    if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(abs < 10_000_000 ? 1 : 0)} M ${m.currency}`;
+    if (abs >= 10_000) return `${Math.round(n / 1_000)} k ${m.currency}`;
+    return `${Math.round(n).toLocaleString()} ${m.currency}`;
+}
+
+const fmtScore = (s?: WatchScore | null) =>
+    s?.letter ? `${s.letter}${s.numeric != null ? ` ${s.numeric}` : ""}` : "—";
+
+type HistoryCardProps = {
+    item: WatchRow;
+    s: (v: number) => number;
+};
+
+const HistoryCard = React.memo(
+    ({ item, s }: HistoryCardProps) => {
+        const stableUri = useMemo(
+            () =>
+                item.photoId
+                    ? getStableUri(item.photoId, item.thumb ?? undefined)
+                    : item.thumb ?? undefined,
+            [item.photoId, item.thumb]
+        );
+
+        return (
+            <Pressable
+                onPress={() => {
+                    triggerHaptic("impactLight");
+                    router.push({ pathname: "/feed/watch-details", params: { id: String(item.id) } });
+                }}
+                style={[styles.card, { padding: s(14), borderRadius: s(28) }]}
+            >
+                <Thumb photoId={item.photoId} uri={stableUri} size={s(82)} />
+
+                <View style={{ flex: 1 }}>
+                    <Text
+                        numberOfLines={2}
+                        style={{ fontSize: s(18), fontFamily: Font.inter.extraBold, color: "#0F172A" }}
+                    >
+                        {item.name ?? "Analyzing…"}
+                    </Text>
+                    <View
+                        style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            marginTop: s(6),
+                            gap: s(8),
+                        }}
+                    >
+                        <Pill text={fmtScore(item.score)} tone={item.score?.letter} />
+                        <Pill text={fmtPriceCompact(item.price)} />
+                        <Pill text={item.year ? String(item.year) : "—"} />
+                    </View>
+                </View>
+
+                <Ionicons name="chevron-forward" size={s(18)} color="#909090ff" />
+            </Pressable>
+        );
+    },
+    (prev, next) => prev.item === next.item
+);
+
 
 export default function ScanHistory() {
     const insets = useSafeAreaInsets();
@@ -50,13 +119,6 @@ export default function ScanHistory() {
     const s = scale;
     const EXTRA_TOP = s(70);
     const ABOVE_FOLD = 6;
-
-    const bootRows = React.useRef<WatchRow[]>(
-        (takeBootRows() as WatchRow[] | null) ??
-        (loadHistorySnapshot() as WatchRow[] | null) ??
-        []
-    ).current;
-
 
     const meta = getBootMeta(); // { stage: "snapshot"|"network"|"none", netCount: number|null }
     const seedBoot = (takeBootRows() as WatchRow[] | null); // may be [] (authoritative empty), array, or null
@@ -66,15 +128,21 @@ export default function ScanHistory() {
 
     const [active, setActive] = useState<"camera" | "collection">("collection");
 
-   // const [rows, setRows] = useState<WatchRow[] | null>(bootRows);
-  //  const [loading, setLoading] = useState(bootRows.length === 0);
-  //  const rowsRef = React.useRef<WatchRow[] | null>(bootRows);
-  //  useEffect(() => { rowsRef.current = rows; }, [rows]);
-
     const [rows, setRows] = useState<WatchRow[] | null>(initialRows);
     // If we’re showing forced empty from prior network, there’s nothing to “load” visually.
     const [loading, setLoading] = useState(!authoritativeEmpty && initialRows.length === 0);
     const rowsRef = React.useRef<WatchRow[] | null>(initialRows);
+
+    const keyExtractor = useCallback((it: WatchRow) => String(it.id), []);
+
+    const renderItem = useCallback(
+        ({ item }: { item: WatchRow }) => <HistoryCard item={item} s={s} />,
+        [s]
+    );
+
+    useEffect(() => {
+        rowsRef.current = rows;
+    }, [rows]);
 
     const isFetchingRef = React.useRef(false);
 
@@ -95,7 +163,6 @@ export default function ScanHistory() {
     function sameRow(a: WatchRow, b: WatchRow) {
         return (
             a.photoId === b.photoId &&
-            a.thumb === b.thumb &&
             a.name === b.name &&
             a.year === b.year &&
             (a.score?.letter ?? "") === (b.score?.letter ?? "") &&
@@ -195,54 +262,6 @@ export default function ScanHistory() {
         return () => { };
     }, [load]));
 
-    // ---------- small formatters ----------
-    function fmtPriceCompact(m?: Money | null) {
-        if (!m || m.amount == null || !m.currency) return "—";
-        const n = Number(m.amount);
-        if (!isFinite(n)) return "—";
-        const abs = Math.abs(n);
-
-        if (abs >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(abs < 10_000_000_000 ? 1 : 0)} B ${m.currency}`;
-        if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(abs < 10_000_000 ? 1 : 0)} M ${m.currency}`;
-        if (abs >= 10_000) return `${Math.round(n / 1_000)} k ${m.currency}`;
-        return `${Math.round(n).toLocaleString()} ${m.currency}`;
-    }
-
-    const fmtScore = (s?: WatchScore | null) =>
-        s?.letter ? `${s.letter}${s.numeric != null ? ` ${s.numeric}` : ""}` : "—";
-
-
-    // ---------- card ----------
-    const Card = React.memo(
-        ({ item }: { item: WatchRow }) => (
-            <Pressable
-                onPress={() => {
-                    triggerHaptic("impactLight");
-                    router.push({ pathname: "/feed/watch-details", params: { id: String(item.id) } });
-                }}
-                style={[styles.card, { padding: s(14), borderRadius: s(28) }]}
-            >
-                <Thumb photoId={item.photoId} uri={item.thumb} size={s(82)} />
-                {/* debug={__DEV__} check this latter */}
-
-                <View style={{ flex: 1 }}>
-                    <Text numberOfLines={2} style={{ fontSize: s(18), fontFamily: Font.inter.extraBold, color: "#0F172A" }}>
-                        {item.name ?? "Analyzing…"}
-                    </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", marginTop: s(6), gap: s(8) }}>
-                        <Pill text={fmtScore(item.score)} tone={item.score?.letter} />
-                        <Pill text={fmtPriceCompact(item.price)} />
-                        <Pill text={item.year ? String(item.year) : "—"} />
-                    </View>
-                </View>
-
-                <Ionicons name="chevron-forward" size={s(18)} color="#909090ff" />
-            </Pressable>
-        ),
-        (prev, next) => prev.item === next.item
-    );
-
-
     const EmptyState = () => (
         <>
             {/* Illustration area (your old design) */}
@@ -262,28 +281,9 @@ export default function ScanHistory() {
             </Text>
         </>
     );
-
-    const HistoryList = ({ data }: { data: WatchRow[] }) => (
-        <FlatList
-            data={data}
-            keyExtractor={(it) => String(it.id)}
-            initialNumToRender={ABOVE_FOLD}
-            maxToRenderPerBatch={ABOVE_FOLD}
-            windowSize={3}
-            contentContainerStyle={{ paddingHorizontal: vw(5), paddingBottom: insets.bottom + s(84), paddingTop: s(16), gap: s(12) }}
-            renderItem={({ item }) => <Card item={item} />}
-            showsVerticalScrollIndicator={false}
-            overScrollMode="always"
-            nestedScrollEnabled
-            removeClippedSubviews={false}
-        />
-    );
-
     // ---------- UI ----------
-    //const showEmpty = !loading && (!rows || rows.length === 0);
-    const showEmpty = (authoritativeEmpty && true) || (!loading && (!rows || rows.length === 0));
+    const showEmpty = !loading && (!rows || rows.length === 0)
     const ICON_SIZE = scale(28);
-
 
     const SkeletonCard = () => (
         <View style={[styles.card, { padding: s(14), borderRadius: s(28) }]}>
@@ -391,14 +391,29 @@ export default function ScanHistory() {
                     </View>
                 </View>
 
-                {authoritativeEmpty ? (
-                    <EmptyState />
-                ) : loading ? (
+                {loading ? (
                     <SkeletonList />
                 ) : showEmpty ? (
                     <EmptyState />
                 ) : (
-                    <HistoryList data={rows!} />
+                    <FlatList
+                        data={rows ?? []}
+                        keyExtractor={keyExtractor}
+                        initialNumToRender={ABOVE_FOLD}
+                        maxToRenderPerBatch={ABOVE_FOLD}
+                        windowSize={3}
+                        contentContainerStyle={{
+                            paddingHorizontal: vw(5),
+                            paddingBottom: insets.bottom + s(84),
+                            paddingTop: s(16),
+                            gap: s(12),
+                        }}
+                        renderItem={renderItem}
+                        showsVerticalScrollIndicator={false}
+                        overScrollMode="always"
+                        nestedScrollEnabled
+                        removeClippedSubviews={false}
+                    />
                 )}
             </SafeAreaView>
 
@@ -504,8 +519,7 @@ const styles = StyleSheet.create({
 
     pillClip: {
         borderRadius: 50,
-        overflow: "hidden",          // critical: clips BlurView to pill
-        // make sure Android respects stacking:
+        overflow: "hidden",
         position: "relative",
     },
     navPillContent: {
@@ -514,7 +528,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 10,
         position: "relative",
-        zIndex: 0,                   // ensure above BlurView on Android
-        elevation: 0,                // belt-and-suspenders for Android
+        zIndex: 0,
+        elevation: 0,
     },
 });
