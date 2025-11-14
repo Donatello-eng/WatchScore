@@ -42,7 +42,7 @@ export async function GET(req: Request) {
 
     // 1) build upstream
     const inUrl = new URL(req.url);
-    const upstream = new URL("/watches", API);
+    const upstream = new URL("/admin/watches", API);
     const limit = inUrl.searchParams.get("limit");
     const cursor = inUrl.searchParams.get("cursor");
     if (limit) upstream.searchParams.set("limit", limit);

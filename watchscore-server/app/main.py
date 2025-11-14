@@ -864,6 +864,56 @@ async def reset_session(principal: Principal = Depends(auth_principal)):
     return {"ok": True}
 
 
+@app.get("/admin/watches")
+async def admin_list_watches(
+    limit: int = Query(20, ge=1, le=100),
+    cursor: Optional[int] = Query(None),
+    x_admin_key: str = Header(alias="x-api-key"),
+):
+    # Same secret as admin_get_watch
+    if x_admin_key != os.getenv("ADMIN_API_KEY", "dev-secret"):
+        raise HTTPException(403, "Forbidden")
+
+    where: Dict[str, Any] = {}
+    if cursor:
+        where["id"] = {"lt": cursor}
+
+    rows = await db.watch.find_many(
+        where=where,
+        order={"id": "desc"},
+        take=limit + 1,
+        include={"photos": True, "analysis": True},
+    )
+
+    items: List[Dict[str, Any]] = []
+    for w in rows[:limit]:
+        # signed thumbs
+        thumbs = []
+        for p in w.photos:
+            try:
+                url = _presign_get(p.key, expires=60 * 10) if p.key else None
+                thumbs.append({"id": p.id, **({"url": url} if url else {})})
+            except Exception:
+                thumbs.append({"id": p.id})
+
+        sections = getattr(w.analysis, "sections", 0) if w.analysis else 0
+        enrich = _extract(w)   # name/year/score/price etc.
+
+        items.append(
+            {
+                "id": w.id,
+                "createdAt": w.createdAt.isoformat(),
+                "status": w.status,
+                "sections": sections,
+                "photos": thumbs,
+                "userId": w.userId,  # <-- critical for unique user graph
+                **enrich,
+            }
+        )
+
+    next_cursor = rows[-1].id if len(rows) > limit else None
+    return {"items": items, "nextCursor": next_cursor}
+
 @app.get("/admin/watches/{watch_id}")
 async def admin_get_watch(
     watch_id: int,

@@ -114,13 +114,13 @@ const HistoryCard = React.memo(
 
 export default function ScanHistory() {
     const insets = useSafeAreaInsets();
-    const { scale, vw, vh } = useR();        // call once
+    const { scale, vw, vh } = useR();
     const s = scale;
     const EXTRA_TOP = s(70);
     const ABOVE_FOLD = 6;
 
-    const meta = getBootMeta(); // { stage: "snapshot"|"network"|"none", netCount: number|null }
-    const seedBoot = (takeBootRows() as WatchRow[] | null); // may be [] (authoritative empty), array, or null
+    const meta = getBootMeta();
+    const seedBoot = (takeBootRows() as WatchRow[] | null);
     const authoritativeEmpty = meta.stage === "network" && meta.netCount === 0;
     // If network said empty, lock to [] on first paint. Else fall back to whatever boot gave us (or snapshot if you still want).
     const initialRows: WatchRow[] = authoritativeEmpty ? [] : (seedBoot ?? (loadHistorySnapshot() as WatchRow[] | null) ?? []);
@@ -147,6 +147,7 @@ export default function ScanHistory() {
     }, [rows]);
 
     const isFetchingRef = React.useRef(false);
+    const firstLoadDoneRef = React.useRef(false);
 
     useEffect(() => {
         const warmSeed = initialRows;
@@ -195,12 +196,18 @@ export default function ScanHistory() {
     }
 
     const load = useCallback(async () => {
-        if (isFetchingRef.current) return;          // prevent overlap + focus spam
+        if (isFetchingRef.current) return;
         isFetchingRef.current = true;
 
-        // Show skeleton only if we truly had nothing before this fetch
-        if (!authoritativeEmpty)
-            setLoading(prev => prev || !(rowsRef.current && rowsRef.current.length));
+        const hasRowsNow = !!(rowsRef.current && rowsRef.current.length);
+
+        // First load + "authoritative empty" => keep EmptyState, no skeleton.
+        // Any later load with no rows => show skeleton instead of EmptyState.
+        setLoading(prev =>
+            !firstLoadDoneRef.current && authoritativeEmpty
+                ? false
+                : prev || !hasRowsNow
+        );
 
         try {
             const listRes = await apiFetch(`/watches`);
@@ -226,9 +233,10 @@ export default function ScanHistory() {
                     thumb: p?.url ?? null,
                     name: it.name ?? null,
                     year: it.year ?? null,
-                    score: it.overallLetter || it.overallNumeric != null
-                        ? { letter: it.overallLetter ?? undefined, numeric: it.overallNumeric ?? null }
-                        : null,
+                    score:
+                        it.overallLetter || it.overallNumeric != null
+                            ? { letter: it.overallLetter ?? undefined, numeric: it.overallNumeric ?? null }
+                            : null,
                     price: it.price ?? null,
                     status: it.status,
                 };
@@ -236,12 +244,10 @@ export default function ScanHistory() {
 
             setRows(prev => {
                 const merged = mergeRows(prev, mapped);
-                // persist for next mount
                 saveHistorySnapshot(merged);
                 return merged;
             });
 
-            // seed and prefetch above the fold (non-blocking)
             for (const it of list.items ?? []) {
                 const p = it?.photos?.[0];
                 if (p?.id && p?.url) bumpUri(p.id, p.url);
@@ -254,10 +260,11 @@ export default function ScanHistory() {
                 .filter(Boolean) as { uri: string; key: string }[];
             thumbPrefetcher.enqueue(pairs.slice(0, ABOVE_FOLD));
         } finally {
+            firstLoadDoneRef.current = true;
             isFetchingRef.current = false;
             setLoading(false);
         }
-    }, []); // <-- no rows here
+    }, [authoritativeEmpty]);
 
     useFocusEffect(React.useCallback(() => {
         load();
@@ -438,9 +445,11 @@ export default function ScanHistory() {
                             )}
                             <View style={styles.navPillContent}>
                                 <Pressable
-                                    onPress={() => { triggerHaptic("impactMedium"); 
+                                    onPress={() => {
+                                        triggerHaptic("impactMedium");
                                         //setActive("camera"); 
-                                        router.push("/feed/uploadphotos"); }}
+                                        router.push("/feed/uploadphotos");
+                                    }}
                                     style={[styles.navItem, active === "camera" && styles.navItemActive]}
                                     hitSlop={8}
                                 >

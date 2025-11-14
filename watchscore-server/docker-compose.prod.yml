@@ -1,9 +1,13 @@
-# /home/watchscore/backend/docker-compose.yml
+# /home/watchscore/backend/docker-compose.prod.yml
 services:
   api:
     image: ${IMAGE_NAME:-watchscore-backend}:${IMAGE_TAG:-latest}
     platform: "linux/amd64"
     env_file: [.env]
+    environment:
+      DATABASE_URL: "file:/data/prod.db"
+    volumes:
+      - prod_db:/data    
     ports: 
       - "127.0.0.1:18000:8000"
     restart: unless-stopped
@@ -12,3 +16,6 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+
+volumes:
+  prod_db:

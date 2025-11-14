@@ -17,7 +17,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useR } from "../../hooks/useR";
 import { Font } from "../../hooks/fonts";
 import * as ImagePicker from "expo-image-picker";
@@ -96,12 +96,12 @@ export default function CameraScreen() {
   const mounted = useRef(true);
 
   const [permission, requestPermission] = useCameraPermissions();
-  const [submitting, setSubmitting] = useState(false);
-  const [slots, setSlots] = useState<Array<string | null>>([null, null, null]);
+  //  const [submitting, setSubmitting] = useState(false);
+  // const [slots, setSlots] = useState<Array<string | null>>([null, null, null]);
 
   // 🔒 Shutter gating: LOCK UNTIL THUMBNAIL RENDERS
-  const [shutterLocked, setShutterLocked] = useState(false);
-  const [pendingSlot, setPendingSlot] = useState<number | null>(null);
+  //const [shutterLocked, setShutterLocked] = useState(false);
+  //const [pendingSlot, setPendingSlot] = useState<number | null>(null);
   const lastShotAtRef = useRef(0);
 
   // --- SHUTTER FX ANIMATIONS ---
@@ -110,6 +110,28 @@ export default function CameraScreen() {
   const shutterScale = useRef(new Animated.Value(1)).current; // shutter pulse
   const rippleScale = useRef(new Animated.Value(0.7)).current; // ring ripple
   const rippleOpacity = useRef(new Animated.Value(0)).current; // ring ripple
+  const INITIAL_SLOTS: Array<string | null> = [null, null, null];
+
+  const [slots, setSlots] = useState<Array<string | null>>(INITIAL_SLOTS);
+  const [submitting, setSubmitting] = useState(false);
+  const [shutterLocked, setShutterLocked] = useState(false);
+  const [pendingSlot, setPendingSlot] = useState<number | null>(null);
+  
+  
+  useFocusEffect(
+    React.useCallback(() => {
+      // Every time the camera screen becomes active, start fresh
+      setSlots(INITIAL_SLOTS);
+      setSubmitting(false);
+      setShutterLocked(false);
+      setPendingSlot(null);
+      lastShotAtRef.current = 0;
+
+      return undefined; // no cleanup needed
+    }, [])
+  );
+
+
 
   const playShutterFX = () => {
     triggerHaptic("impactLight");
@@ -647,7 +669,7 @@ export default function CameraScreen() {
                   uploads.map((u) => u.key)
                 );
 
-                router.push({
+                router.replace({
                   pathname: "/feed/analyzing",
                   params: { id: String(watchId) },
                 });

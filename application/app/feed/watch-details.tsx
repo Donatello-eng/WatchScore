@@ -132,7 +132,7 @@ export function openAnalysisStreamXHR(
     closed = true;
     try {
       xhr.abort();
-    } catch {}
+    } catch { }
   };
 }
 
@@ -156,6 +156,7 @@ export default function WatchDetails() {
     return unsub;
   }, [navigation]);
 
+
   const sseStartedRef = useRef(false);
   const lastRunKeyRef = useRef<string | undefined>(undefined);
   const requestedSectionsRef = useRef<Set<string>>(new Set());
@@ -164,6 +165,8 @@ export default function WatchDetails() {
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
   const [ai, setAi] = useState<Partial<WatchAI>>({});
+
+
 
   const { id: idParam, data: packedData } = useLocalSearchParams<{
     id?: string;
@@ -259,7 +262,7 @@ export default function WatchDetails() {
       cancelled = true;
       try {
         stop?.();
-      } catch {}
+      } catch { }
       sseStartedRef.current = false;
       stopRef.current = null;
     };
@@ -273,58 +276,44 @@ export default function WatchDetails() {
       console.log(tag, "<unserializable>", e);
     }
   }
-
-  async function fetchJsonVerbose(url: string) {
-    const t0 = Date.now();
-    console.log("[net] GET", url);
-    let res: Response;
-    try {
-      res = await fetch(url);
-    } catch (e) {
-      console.log("[net] fetch error:", e);
-      throw e;
-    }
-    const text = await res.text();
-    console.log(
-      "[net] status",
-      res.status,
-      res.ok,
-      "| ct:",
-      res.headers.get("content-type")
-    );
-    console.log("[net] body(sample):", text.slice(0, 800));
-    let json: any;
-    try {
-      json = JSON.parse(text);
-    } catch (e) {
-      console.log("[net] JSON.parse error:", e);
-      throw new Error("Bad JSON from server");
-    }
-    console.log("[net] done in", Date.now() - t0, "ms");
-    return json;
-  }
-
+  
+  const resetAIState = React.useCallback(() => {
+    setAi({});
+    sseStartedRef.current = false;
+    lastRunKeyRef.current = undefined;
+    requestedSectionsRef.current = new Set();
+  }, []);
   // Fetch or adopt packed JSON
   useEffect(() => {
     let cancelled = false;
 
-    // If we have packed JSON, use it
+    // Every time the route params change, treat it as a new watch
+    setLoading(true);
+    setErr(null);
+    setRecord(null);
+    resetAIState();
+
+    // 1) If we have packed JSON (coming from /feed/analyzing), use it
+    const packed = decodeJsonParam<{
+      payload: { record: ServerWatch; ai: Partial<WatchAI> };
+    }>(packedData);
+
     if (packed?.payload) {
-      setRecord(packed.payload.record);
-      setAi(packed.payload.ai ?? {});
-      setLoading(false);
-      setErr(null);
+      if (!cancelled) {
+        setRecord(packed.payload.record);
+        setAi(packed.payload.ai ?? {});
+        setLoading(false);
+      }
       return () => {
         cancelled = true;
       };
     }
 
-    // Otherwise, fetch by id
+    // 2) Otherwise, fetch by id (coming from ScanHistory)
     const id = Number(idParam);
     if (id && API_BASE) {
       (async () => {
         try {
-          setLoading(true);
           const res = await apiFetch(`/watches/${id}`);
           const json = (await res.json()) as ServerWatch;
           if (!cancelled) {
@@ -342,14 +331,16 @@ export default function WatchDetails() {
         }
       })();
     } else {
-      setLoading(false);
-      setErr("Missing id and no packed data");
+      if (!cancelled) {
+        setLoading(false);
+        setErr("Missing id and no packed data");
+      }
     }
 
     return () => {
       cancelled = true;
     };
-  }, [API_BASE, idParam, packed, packedData]);
+  }, [API_BASE, idParam, packedData, resetAIState]);
 
   const dto = useMemo(
     () => (record ? toWatchCardDTO(record, ai) : null),

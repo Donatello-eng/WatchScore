@@ -30,10 +30,11 @@ ssh "${HOST}" bash -s <<EOF
   docker load -i "${REMOTE_BASE}/${TARBALL}"
   rm -f "${REMOTE_BASE}/${TARBALL}"
   cd "${REMOTE_BACKEND}"
-  IMAGE_NAME="${IMAGE}" IMAGE_TAG="${TAG}" docker compose down
-  IMAGE_NAME="${IMAGE}" IMAGE_TAG="${TAG}" docker compose up -d
-  docker compose ps
+  IMAGE_NAME="${IMAGE}" IMAGE_TAG="${TAG}" docker compose -f docker-compose.prod.yml down
+  IMAGE_NAME="${IMAGE}" IMAGE_TAG="${TAG}" docker compose -f docker-compose.prod.yml up -d
+  docker compose -f docker-compose.prod.yml ps
 EOF
+
 
 # 6) local cleanup
 rm -f "${TARBALL}"

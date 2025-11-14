@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 type Photo = { id: number; url?: string | null };
 type Watch = {
   id: number;
+  userId?: number | null;
   createdAt?: string | null;
   photos: Photo[];
   name?: string | null;
@@ -16,6 +17,14 @@ type Watch = {
   price?: { amount?: number | null; currency?: string | null } | null;
 };
 type ListResp = { items: Watch[]; nextCursor?: number | null };
+import SparklineInteractive from "./components/SparklineInteractive";
+
+import WatchMetricCard, {
+  buildMeanScansPerUserStats,
+  buildUniqueUserStats,
+  buildWatchStats,
+  type WatchStats,
+} from "./components/WatchMetricCard";
 
 function cls(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
@@ -50,13 +59,12 @@ function fmtPrice(p?: { amount?: number | null; currency?: string | null } | nul
     return `${p.amount} ${p.currency}`;
   }
 }
-
 // via local proxy (handles auth + aggregation)
 
 async function getWatches(limit = 50, cursor?: string | null) {
   const h = await headers();                        // <-- await here
   const proto = h.get("x-forwarded-proto") ?? "http";
-  const host  = h.get("x-forwarded-host") ?? h.get("host");
+  const host = h.get("x-forwarded-host") ?? h.get("host");
   if (!host) throw new Error("Missing Host header");
 
   const url = new URL(`/api/ws/watches`, `${proto}://${host}`);
@@ -91,15 +99,26 @@ export default async function WatchesPage({
   const sp = await searchParams;
   const cursor = sp?.cursor ?? undefined;
   const { items, nextCursor } = await getWatches(50, cursor ?? null);
+  const scanStats = buildWatchStats(items);
+  const userStats = buildUniqueUserStats(items);
+  const meansStats = buildMeanScansPerUserStats(items);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
+        <div className="grid gap-4 md:grid-cols-3">
+          <WatchMetricCard title="Scans" stats={scanStats} tooltipLabel="Scans" />
+          <WatchMetricCard title="Unique users" stats={userStats} tooltipLabel="Unique users" />
+          <WatchMetricCard title="Mean scans/user" stats={meansStats} tooltipLabel="Mean scans per users" />
+        </div>
+
         <div className="flex items-end justify-between gap-4 pt-4">
+
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Watches</h1>
             <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Manage and browse your scans.</p>
           </div>
+
 
           <form action="/" className="flex items-center gap-2">
             <input
