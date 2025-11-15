@@ -21,6 +21,7 @@ import { router, useFocusEffect } from "expo-router";
 import { useR } from "@/../hooks/useR";
 import { Font } from "@/../hooks/fonts";
 import * as ImagePicker from "expo-image-picker";
+import { useIsFocused } from "@react-navigation/native";
 
 import {
   initWatchPresign,
@@ -111,6 +112,7 @@ export default function CameraScreen() {
   const [shutterLocked, setShutterLocked] = useState(false);
   const [pendingSlot, setPendingSlot] = useState<number | null>(null);
 
+  const isFocused = useIsFocused();
 
   useFocusEffect(
     React.useCallback(() => {
@@ -369,7 +371,7 @@ export default function CameraScreen() {
           { transform: [{ scale: camScale }] },
         ]}
       >
-        {!submitting && (
+        {isFocused && !submitting && (
           <CameraView
             ref={camRef}
             style={RNStyleSheet.absoluteFill}
@@ -636,45 +638,40 @@ export default function CameraScreen() {
           // Solid green "Continue" pill
           <Pressable
             disabled={submitting}
-            onPress={async () => {
+            onPress={() => {
               if (submitting) return;
-              setSubmitting(true);
-              try {
-                const imgs = (slots.filter(Boolean) as string[]).slice(0, 3);
-                if (imgs.length === 0) return;
+              setSubmitting(true);          // this makes {!submitting && <CameraView/>} false
 
-                const processed = await Promise.all(
-                  imgs.map((u) => shrinkAndNormalize(u))
-                );
-                const contentTypes = processed.map((p) => p.mime);
-                const { watchId, uploads } = await initWatchPresign(
-                  processed.length,
-                  contentTypes
-                );
+              requestAnimationFrame(async () => {
+                try {
+                  const imgs = (slots.filter(Boolean) as string[]).slice(0, 3);
+                  if (imgs.length === 0) return;
 
-                for (let i = 0; i < processed.length; i++) {
-                  await putToS3(
-                    uploads[i].uploadUrl,
-                    processed[i].uri,
-                    uploads[i].headers
+                  const processed = await Promise.all(imgs.map((u) => shrinkAndNormalize(u)));
+                  const contentTypes = processed.map((p) => p.mime);
+                  const { watchId, uploads } = await initWatchPresign(
+                    processed.length,
+                    contentTypes
                   );
+
+                  for (let i = 0; i < processed.length; i++) {
+                    await putToS3(uploads[i].uploadUrl, processed[i].uri, uploads[i].headers);
+                  }
+
+                  await finalizeWatch(
+                    watchId,
+                    uploads.map((u) => u.key)
+                  );
+
+                  router.replace({
+                    pathname: "/feed/(tabs)/scanhistory/analyzing",
+                    params: { id: String(watchId) },
+                  });
+                } catch (e: any) {
+                  console.warn("direct S3 flow failed:", e?.message || e);
+                  setSubmitting(false);
                 }
-
-                await finalizeWatch(
-                  watchId,
-                  uploads.map((u) => u.key)
-                );
-
-                router.replace({
-                  pathname: "/feed/(tabs)/scanhistory/analyzing",
-                  params: { id: String(watchId) },
-                });
-              } catch (e: any) {
-                console.warn("direct S3 flow failed:", e?.message || e);
-                if (mounted.current) setSubmitting(false);
-                return;
-              }
-              if (mounted.current) setSubmitting(false);
+              });
             }}
             style={{
               width: "100%",
