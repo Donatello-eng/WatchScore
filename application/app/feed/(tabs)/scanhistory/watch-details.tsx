@@ -1,7 +1,7 @@
 // app/feed/watch-details.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import { useLocalSearchParams, router, useNavigation } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -18,16 +18,16 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useR } from "../../hooks/useR";
-import { Font } from "../../hooks/fonts";
+import { useR } from "../../../../hooks/useR";
+import { Font } from "../../../../hooks/fonts";
 
-import WatchCard from "../../src/components/watch-details/WatchCard";
-import OverallScoreCard from "../../src/components/watch-details/OvarallCard";
-import MovementQualityCard from "../../src/components/watch-details/MovementQualityCard";
-import MaterialsAndBuildCard from "../../src/components/watch-details/MaterialsAndBuildCard";
-import MaintenanceAndRisksCard from "../../src/components/watch-details/MentenanceAndRisksCard";
-import ValueMoneyCard from "../../src/components/watch-details/ValueMoneyCard";
-import AlternativesCard from "../../src/components/watch-details/AlternativesCard";
+import WatchCard from "../../../../src/components/watch-details/WatchCard";
+import OverallScoreCard from "../../../../src/components/watch-details/OvarallCard";
+import MovementQualityCard from "../../../../src/components/watch-details/MovementQualityCard";
+import MaterialsAndBuildCard from "../../../../src/components/watch-details/MaterialsAndBuildCard";
+import MaintenanceAndRisksCard from "../../../../src/components/watch-details/MentenanceAndRisksCard";
+import ValueMoneyCard from "../../../../src/components/watch-details/ValueMoneyCard";
+import AlternativesCard from "../../../../src/components/watch-details/AlternativesCard";
 
 import { toWatchCardDTO } from "@/dto/toWatchCardDTO";
 import { toMovementQualityDTO } from "@/dto/toMovementQualityDTO";
@@ -138,25 +138,8 @@ export function openAnalysisStreamXHR(
 
 export default function WatchDetails() {
   const { scale, vw, vh } = useR();
-
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  // 🔹 Intercept swipe/hardware back and redirect to scanhistory
-  const navigation = useNavigation();
-  const allowProgrammaticExit = useRef(false);
-
-  useEffect(() => {
-    const unsub = (navigation as any).addListener("beforeRemove", (e: any) => {
-      if (allowProgrammaticExit.current) return; // let programmatic navigations pass
-
-      // Block the default pop (gesture/hardware) and go to scanhistory instead
-      e.preventDefault();
-      allowProgrammaticExit.current = true;
-      router.replace("/feed/scanhistory");
-    });
-    return unsub;
-  }, [navigation]);
-
-
   const sseStartedRef = useRef(false);
   const lastRunKeyRef = useRef<string | undefined>(undefined);
   const requestedSectionsRef = useRef<Set<string>>(new Set());
@@ -165,8 +148,6 @@ export default function WatchDetails() {
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
   const [ai, setAi] = useState<Partial<WatchAI>>({});
-
-
 
   const { id: idParam, data: packedData } = useLocalSearchParams<{
     id?: string;
@@ -276,7 +257,7 @@ export default function WatchDetails() {
       console.log(tag, "<unserializable>", e);
     }
   }
-  
+
   const resetAIState = React.useCallback(() => {
     setAi({});
     sseStartedRef.current = false;
@@ -413,12 +394,12 @@ export default function WatchDetails() {
             hitSlop={12}
             onPress={() => {
               triggerHaptic("impactMedium");
-              router.replace("/feed/scanhistory");
+              router.back();
             }}
             style={styles.backBtn}
           >
             <Image
-              source={require("../../assets/images/chevron-left.webp")}
+              source={require("@/../assets/images/chevron-left.webp")}
               style={styles.backIcon}
             />
           </Pressable>

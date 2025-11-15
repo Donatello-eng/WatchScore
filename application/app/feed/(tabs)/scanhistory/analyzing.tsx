@@ -234,7 +234,7 @@ function AnalyzingInner({ id, localUri }: InnerProps) {
     );
 
     router.replace({
-      pathname: "/feed/watch-details",
+      pathname: "/feed/(tabs)/scanhistory/watch-details",
       params: pack({ record: record!, ai: aiRef.current ?? {} }),
     });
   }, [id, record, gotQuickFacts, aiTick]);

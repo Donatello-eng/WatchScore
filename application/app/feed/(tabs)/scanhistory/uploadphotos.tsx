@@ -16,10 +16,10 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { useR } from "../../hooks/useR";
-import { Font } from "../../hooks/fonts";
-import { router } from "expo-router";
-import { triggerHaptic } from "../../hooks/haptics";
+import { useR } from "@/../hooks/useR";
+import { Font } from "@/../hooks/fonts";
+import { useRouter } from "expo-router";
+import { triggerHaptic } from "@/../hooks/haptics";
 
 const ABS_FILL: any = StyleSheet.absoluteFillObject;
 
@@ -233,6 +233,7 @@ export default function UploadPhotos() {
   );
   const sideUp = Math.min(tile1 * 0.10, availH * 0.08);
   const sideLeftPad = Math.min(availW * 0.04, 40);
+  const router = useRouter();
 
   return (
     <View style={styles.root}>
@@ -261,12 +262,13 @@ export default function UploadPhotos() {
           hitSlop={12}
           onPress={() => {
             triggerHaptic("impactMedium");
-            router.replace("/feed/scanhistory");
+            router.back();
+            //router.replace("/feed/scanhistory");
           }}
           style={styles.backBtn}
         >
           <Image
-            source={require("../../assets/images/chevron-left.webp")}
+            source={require("@/../assets/images/chevron-left.webp")}
             style={styles.backIcon}
           />
         </Pressable>
@@ -304,7 +306,7 @@ export default function UploadPhotos() {
               style={[styles.cardWrap, { width: tile1, aspectRatio: 1 }]}
             >
               <Animated.View style={[ABS_FILL, styles.cardShadow, frontAnim.animatedStyle]} pointerEvents="none">
-                <Image source={require("../../assets/images/front.webp")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+                <Image source={require("@/../assets/images/front.webp")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
               </Animated.View>
             </Pressable>
 
@@ -315,7 +317,7 @@ export default function UploadPhotos() {
                 style={[styles.cardWrap, { width: "100%", height: "100%", transform: [{ translateY: casebackDown }] }]}
               >
                 <Animated.View style={[ABS_FILL, styles.cardShadow, backAnim.animatedStyle]} pointerEvents="none">
-                  <Image source={require("../../assets/images/caseback.webp")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+                  <Image source={require("@/../assets/images/caseback.webp")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
                 </Animated.View>
               </Pressable>
             </View>
@@ -337,7 +339,7 @@ export default function UploadPhotos() {
               ]}
             >
               <Animated.View style={[ABS_FILL, styles.cardShadow, sideAnim.animatedStyle]} pointerEvents="none">
-                <Image source={require("../../assets/images/side.webp")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+                <Image source={require("@/../assets/images/side.webp")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
               </Animated.View>
             </Pressable>
           </View>
@@ -346,7 +348,7 @@ export default function UploadPhotos() {
         {/* Begin button (unchanged; just measure height) */}
         <Pressable
           onLayout={e => setBtnH(e.nativeEvent.layout.height)}
-          onPress={() => { triggerHaptic("impactMedium"); router.push("/feed/camera"); }}
+          onPress={() => { triggerHaptic("impactMedium"); router.replace("/feed/(tabs)/scanhistory/camera"); }}
           style={({ pressed }) => [
             styles.beginBtn,
             pressed && { transform: [{ scale: 0.98 }] },
@@ -360,7 +362,7 @@ export default function UploadPhotos() {
         >
           <Text style={{ fontFamily: Font.inter.bold, fontSize: scale(22), color: "#FFFFFF" }}>Begin</Text>
           <Image
-            source={require("../../assets/images/chevron-left.webp")}
+            source={require("@/../assets/images/chevron-left.webp")}
             style={{ position: "absolute", right: scale(18), width: scale(20), height: scale(20), tintColor: "#FFFFFF", transform: [{ rotate: "180deg" }] }}
             resizeMode="contain"
           />

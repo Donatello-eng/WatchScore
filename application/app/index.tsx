@@ -31,7 +31,7 @@ export default function Index() {
   if (offline) return <Redirect href="/offline" />;
 
   return hasOnboarded ? (
-    <Redirect href="/feed/scanhistory" />
+    <Redirect href = "/feed/(tabs)/scanhistory" />
   ) : (
     <Redirect href="/onboarding/welcome" />
   );

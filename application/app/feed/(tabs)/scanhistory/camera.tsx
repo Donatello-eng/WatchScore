@@ -18,20 +18,20 @@ import {
 } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useFocusEffect } from "expo-router";
-import { useR } from "../../hooks/useR";
-import { Font } from "../../hooks/fonts";
+import { useR } from "@/../hooks/useR";
+import { Font } from "@/../hooks/fonts";
 import * as ImagePicker from "expo-image-picker";
 
 import {
   initWatchPresign,
   putToS3,
   finalizeWatch,
-} from "../../src/api/directS3";
+} from "@/../src/api/directS3";
 
 import * as ImageManipulator from "expo-image-manipulator";
 import DotsEllipsis from "@/components/loading/DotsEllipsis";
 import { triggerHaptic } from "hooks/haptics";
-import PermissionRequired from "../components/permissionRequired";
+import PermissionRequired from "@/../app/components/permissionRequired";
 
 const MAX_EDGE = 1600;
 const WEBP_QUALITY = 0.75;
@@ -96,12 +96,6 @@ export default function CameraScreen() {
   const mounted = useRef(true);
 
   const [permission, requestPermission] = useCameraPermissions();
-  //  const [submitting, setSubmitting] = useState(false);
-  // const [slots, setSlots] = useState<Array<string | null>>([null, null, null]);
-
-  // 🔒 Shutter gating: LOCK UNTIL THUMBNAIL RENDERS
-  //const [shutterLocked, setShutterLocked] = useState(false);
-  //const [pendingSlot, setPendingSlot] = useState<number | null>(null);
   const lastShotAtRef = useRef(0);
 
   // --- SHUTTER FX ANIMATIONS ---
@@ -116,8 +110,8 @@ export default function CameraScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [shutterLocked, setShutterLocked] = useState(false);
   const [pendingSlot, setPendingSlot] = useState<number | null>(null);
-  
-  
+
+
   useFocusEffect(
     React.useCallback(() => {
       // Every time the camera screen becomes active, start fresh
@@ -375,12 +369,14 @@ export default function CameraScreen() {
           { transform: [{ scale: camScale }] },
         ]}
       >
-        <CameraView
-          ref={camRef}
-          style={RNStyleSheet.absoluteFill}
-          facing="back"
-          animateShutter={false}
-        />
+        {!submitting && (
+          <CameraView
+            ref={camRef}
+            style={RNStyleSheet.absoluteFill}
+            facing="back"
+            animateShutter={false}
+          />
+        )}
       </Animated.View>
 
       {/* White flash overlay */}
@@ -403,7 +399,7 @@ export default function CameraScreen() {
           style={[styles.backBtn, { top: insets.top + 15 }]} // <= key change
         >
           <Image
-            source={require("../../assets/images/chevron-left.webp")}
+            source={require("@/../assets/images/chevron-left.webp")}
             style={styles.backIcon}
           />
         </Pressable>
@@ -506,7 +502,7 @@ export default function CameraScreen() {
                   />
                 ) : (
                   <Image
-                    source={require("../../assets/images/gallery.webp")}
+                    source={require("@/../assets/images/gallery.webp")}
                     style={{
                       width: scale(28),
                       height: scale(28),
@@ -579,7 +575,7 @@ export default function CameraScreen() {
               }}
             >
               <Image
-                source={require("../../assets/images/gallery.webp")}
+                source={require("@/../assets/images/gallery.webp")}
                 style={{
                   width: scale(30),
                   height: scale(30),
@@ -626,7 +622,7 @@ export default function CameraScreen() {
               />
               {/* shutter image (pulses) */}
               <Animated.Image
-                source={require("../../assets/images/shutter.webp")}
+                source={require("@/../assets/images/shutter.webp")}
                 style={{
                   width: scale(74),
                   height: scale(74),
@@ -670,7 +666,7 @@ export default function CameraScreen() {
                 );
 
                 router.replace({
-                  pathname: "/feed/analyzing",
+                  pathname: "/feed/(tabs)/scanhistory/analyzing",
                   params: { id: String(watchId) },
                 });
               } catch (e: any) {
@@ -709,7 +705,7 @@ export default function CameraScreen() {
                   Continue
                 </Text>
                 <Image
-                  source={require("../../assets/images/chevron-left.webp")}
+                  source={require("@/../assets/images/chevron-left.webp")}
                   style={{
                     position: "absolute",
                     right: scale(22),

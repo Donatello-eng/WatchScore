@@ -1,4 +1,4 @@
-// src/screens/ScanHistory.tsx
+// app/feed/(tabs)/scanhistory/index.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     View, Text, StyleSheet, Pressable, StatusBar,
@@ -9,11 +9,11 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useR } from "../../hooks/useR";
-import { Font } from "../../hooks/fonts";
-import { router, usePathname, useFocusEffect } from "expo-router";
-import { triggerHaptic } from "../../hooks/haptics";
-import { apiFetch } from "../../src/api/http";
+import { useR } from "../../../../hooks/useR";
+import { Font } from "../../../../hooks/fonts";
+import { useRouter, usePathname, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { triggerHaptic } from "../../../../hooks/haptics";
+import { apiFetch } from "../../../../src/api/http";
 
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -62,7 +62,6 @@ type HistoryCardProps = {
     item: WatchRow;
     s: (v: number) => number;
 };
-
 const HistoryCard = React.memo(
     ({ item, s }: HistoryCardProps) => {
         const stableUri = useMemo(
@@ -73,11 +72,13 @@ const HistoryCard = React.memo(
             [item.photoId, item.thumb]
         );
 
+        const router = useRouter();
+
         return (
             <Pressable
                 onPress={() => {
                     triggerHaptic("impactLight");
-                    router.push({ pathname: "/feed/watch-details", params: { id: String(item.id) } });
+                    router.push({ pathname: "/feed/(tabs)/scanhistory/watch-details", params: { id: String(item.id) } });
                 }}
                 style={[styles.card, { padding: s(14), borderRadius: s(28) }]}
             >
@@ -118,6 +119,27 @@ export default function ScanHistory() {
     const s = scale;
     const EXTRA_TOP = s(70);
     const ABOVE_FOLD = 6;
+
+    const router = useRouter();
+    const { openWatchId } = useLocalSearchParams<{ openWatchId?: string }>();
+
+    React.useEffect(() => {
+        if (!openWatchId) return;
+
+        // First render of index: immediately push watch-details on top
+        router.push({
+            pathname: "/feed/(tabs)/scanhistory/watch-details",
+            params: { id: openWatchId },
+        });
+
+        
+    }, [openWatchId, router]);
+
+    // Optional: avoid flashing the list on that first jump
+    if (openWatchId) {
+        return null;
+    }
+
 
     const meta = getBootMeta();
     const seedBoot = (takeBootRows() as WatchRow[] | null);
@@ -276,11 +298,11 @@ export default function ScanHistory() {
             {/* Illustration area (your old design) */}
             <View style={[styles.illustration, { height: vh(52) }]} pointerEvents="none">
                 <Image
-                    source={require("../../assets/images/lefthand.webp")}
+                    source={require("@/../assets/images/lefthand.webp")}
                     style={[styles.leftHand, { width: vw(45), height: vw(45), bottom: vh(13), left: -vw(0) }]}
                 />
                 <Image
-                    source={require("../../assets/images/righthand.webp")}
+                    source={require("@/../assets/images/righthand.webp")}
                     resizeMode="contain"
                     style={[styles.rightHand, { width: vw(90), height: vw(90), bottom: vh(0), right: -vw(22) }]}
                 />
@@ -385,13 +407,13 @@ export default function ScanHistory() {
                             <Pressable
                                 onPress={() => {
                                     triggerHaptic("impactMedium");
-                                    router.push("/feed/support");
+                                    router.push("/feed/(tabs)/scanhistory/support");
                                 }}
                                 hitSlop={scale(8)}
                                 style={{ width: ICON_SIZE, height: ICON_SIZE, alignItems: "center", justifyContent: "center" }}
                             >
                                 <Image
-                                    source={require("../../assets/images/info.webp")}
+                                    source={require("@/../assets/images/info.webp")}
                                     style={{ width: ICON_SIZE, height: ICON_SIZE, tintColor: "#525252" }}
                                     resizeMode="contain"
                                 />
@@ -448,12 +470,13 @@ export default function ScanHistory() {
                                     onPress={() => {
                                         triggerHaptic("impactMedium");
                                         //setActive("camera"); 
-                                        router.push("/feed/uploadphotos");
+                                       // router.push("/feed/uploadphotos");
+                                        router.push("/feed/(tabs)/scanhistory/uploadphotos");
                                     }}
                                     style={[styles.navItem, active === "camera" && styles.navItemActive]}
                                     hitSlop={8}
                                 >
-                                    <Image source={require("../../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                    <Image source={require("@/../assets/images/camera.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
                                     <Text style={[styles.navItemLabel, active === "camera" && styles.navItemLabelActive]}>Camera</Text>
                                 </Pressable>
 
@@ -462,7 +485,7 @@ export default function ScanHistory() {
                                     style={[styles.navItem, { paddingHorizontal: 15 }, active === "collection" && styles.navItemActive]}
                                     hitSlop={8}
                                 >
-                                    <Image source={require("../../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                    <Image source={require("@/../assets/images/grid.webp")} style={{ width: 26, height: 26 }} resizeMode="contain" />
                                     <Text style={[styles.navItemLabel, active === "collection" && styles.navItemLabelActive, { fontFamily: Font.inter.semiBold, fontSize: 11 }]}>
                                         Collection
                                     </Text>

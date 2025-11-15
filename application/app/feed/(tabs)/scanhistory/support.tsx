@@ -12,9 +12,9 @@ import {
   Platform,
   Image,
 } from "react-native";
-import { useR } from "../../hooks/useR";
+import { useR } from "../../../../hooks/useR";
 import { LinearGradient } from "expo-linear-gradient";
-import { triggerHaptic } from "../../hooks/haptics";
+import { triggerHaptic } from "../../../../hooks/haptics";
 
 import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 
@@ -73,13 +73,13 @@ export default function SupportScreen() {
         hitSlop={12}
         onPress={() => {
           triggerHaptic("impactMedium");
-          router.replace("/feed/scanhistory");
-          // router.back();
+          //router.replace("/feed/scanhistory");
+           router.back();
         }}
         style={styles.backBtn}
       >
         <Image
-          source={require("../../assets/images/chevron-left.webp")}
+          source={require("@/../assets/images/chevron-left.webp")}
           style={styles.backIcon}
         />
       </Pressable>
