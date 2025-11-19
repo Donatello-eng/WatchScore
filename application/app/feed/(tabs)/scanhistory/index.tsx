@@ -14,6 +14,7 @@ import { Font } from "../../../../hooks/fonts";
 import { useRouter, usePathname, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { triggerHaptic } from "../../../../hooks/haptics";
 import { apiFetch } from "../../../../src/api/http";
+import { usePremium } from "@/hooks/usePremium";
 
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -25,6 +26,8 @@ import Thumb from "app/components/Thumb";
 import { getStableUri, bumpUri } from "@/services/stableThumbUri";
 import { takeBootRows, getBootMeta } from "@/hooks/useWarmWatchesOnBoot";
 import { loadHistorySnapshot, saveHistorySnapshot } from "@/services/historySnapshot";
+import Purchases from "react-native-purchases";
+import { showPremiumPaywallIfNeeded } from "@/lib/paywall";
 
 type Money = { amount?: number | null; currency?: string | null };
 type WatchScore = { letter?: string; numeric?: number | null };
@@ -122,6 +125,14 @@ export default function ScanHistory() {
 
     const router = useRouter();
     const { openWatchId } = useLocalSearchParams<{ openWatchId?: string }>();
+    const { loading: subLoading, isPremium } = usePremium();
+
+    useEffect(() => {
+        (async () => {
+            const offerings = await Purchases.getOfferings();
+            console.log("OFFERINGS ===>", offerings.current);
+        })();
+    }, []);
 
     React.useEffect(() => {
         if (!openWatchId) return;
@@ -132,7 +143,7 @@ export default function ScanHistory() {
             params: { id: openWatchId },
         });
 
-        
+
     }, [openWatchId, router]);
 
     // Optional: avoid flashing the list on that first jump
@@ -158,6 +169,14 @@ export default function ScanHistory() {
 
     const pathname = usePathname();
     const isScanHistory = pathname === "/feed/scanhistory";
+
+    const FREE_SCAN_LIMIT = 1;
+
+    // how many scans exist in history right now
+    const scanCount = rows?.length ?? 0;
+
+    // has user already consumed free quota?
+    const reachedFreeLimit = scanCount >= FREE_SCAN_LIMIT;
 
     const renderItem = useCallback(
         ({ item }: { item: WatchRow }) => <HistoryCard item={item} s={s} />,
@@ -376,6 +395,7 @@ export default function ScanHistory() {
             },
     ];
 
+
     return (
         <View style={styles.root}>
             <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
@@ -467,11 +487,24 @@ export default function ScanHistory() {
                             )}
                             <View style={styles.navPillContent}>
                                 <Pressable
-                                    onPress={() => {
+                                    onPress={async () => {
                                         triggerHaptic("impactMedium");
-                                        //setActive("camera"); 
-                                       // router.push("/feed/uploadphotos");
-                                        router.push("/feed/(tabs)/scanhistory/uploadphotos");
+
+                                        if (isPremium) {
+                                            router.push("/feed/(tabs)/scanhistory/uploadphotos");
+                                            return;
+                                        }
+                                        if (!reachedFreeLimit) {
+                                            router.push("/feed/(tabs)/scanhistory/uploadphotos");
+                                            return;
+                                        }
+                                        const ok = await showPremiumPaywallIfNeeded();
+                                        if (ok) {
+                                            router.push("/feed/(tabs)/scanhistory/uploadphotos");
+                                        } else {
+                                            // user cancelled / error → stay on history
+                                            // (optional: toast/snackbar)
+                                        }
                                     }}
                                     style={[styles.navItem, active === "camera" && styles.navItemActive]}
                                     hitSlop={8}
