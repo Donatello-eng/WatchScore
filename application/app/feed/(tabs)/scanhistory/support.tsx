@@ -18,8 +18,6 @@ import { triggerHaptic } from "../../../../hooks/haptics";
 
 import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 
-
-
 // Replace with your actual UI theme colors
 const UI = {
   stroke: "rgba(255,255,255,0.66)",
@@ -34,8 +32,6 @@ export default function SupportScreen() {
   const insets = useSafeAreaInsets();
   const { scale, vw, vh } = useR();
 
-  //const safeTop = Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0;
-
   const handleEmailPress = () => {
     Linking.openURL("mailto:bumpgamespublic@gmail.com");
   };
@@ -44,9 +40,16 @@ export default function SupportScreen() {
     Linking.openURL("https://bump.games");
   };
 
+  const handleTermsPress = () => {
+    Linking.openURL("https://bump.games/terms");
+  };
+
+  const handlePrivacyPress = () => {
+    Linking.openURL("https://bump.games/privacy");
+  };
+
   // Responsive values via useR()
   const iconSize = scale(30);
-  //const backPos = { top: safeTop + scale(12), left: scale(16) };
   const containerPad = { paddingHorizontal: vw(7), paddingVertical: vh(3) };
   const titleSizing = { fontSize: scale(24), marginBottom: scale(40) };
   const buttonSizing = {
@@ -57,6 +60,7 @@ export default function SupportScreen() {
   };
   const buttonTextSizing = { fontSize: scale(18), letterSpacing: 0.3 };
   const footerTextSizing = { fontSize: scale(22), letterSpacing: 0.5 };
+  const footerLinkTextSizing = { fontSize: scale(16), letterSpacing: 0.2 };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -73,8 +77,7 @@ export default function SupportScreen() {
         hitSlop={12}
         onPress={() => {
           triggerHaptic("impactMedium");
-          //router.replace("/feed/scanhistory");
-           router.back();
+          router.back();
         }}
         style={styles.backBtn}
       >
@@ -123,6 +126,39 @@ export default function SupportScreen() {
 
         {/* Footer at the bottom */}
         <View style={styles.footer}>
+          {/* Terms + Privacy links ABOVE the logo text */}
+          <View style={styles.footerLinks}>
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic("impactLight");
+                handleTermsPress();
+              }}
+            >
+              <Text
+                style={[styles.footerLinkText, footerLinkTextSizing]}
+                allowFontScaling={false}
+              >
+                Terms of Use
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.footerSeparator}>•</Text>
+
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic("impactLight");
+                handlePrivacyPress();
+              }}
+            >
+              <Text
+                style={[styles.footerLinkText, footerLinkTextSizing]}
+                allowFontScaling={false}
+              >
+                Privacy Policy
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <Text
             style={[
               styles.footerText,
@@ -173,6 +209,21 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: "center",
+  },
+  footerLinks: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  footerLinkText: {
+    color: UI.text,
+    fontFamily: "Inter_500Medium",
+    marginHorizontal: 6,
+  },
+  footerSeparator: {
+    color: UI.text,
+    opacity: 0.7,
   },
   footerText: {
     color: UI.text,
